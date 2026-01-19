@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TruckMate API Tester</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: #94a3b8;
+            margin-bottom: 24px;
+        }
+
+        .section {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .section h2 {
+            font-size: 1.2rem;
+            margin-bottom: 12px;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 8px;
+        }
+
+        label {
+            display: block;
+            color: #94a3b8;
+            margin-bottom: 4px;
+            font-size: 0.875rem;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            background: #0f172a;
+            color: #e2e8f0;
+            margin-bottom: 12px;
+            font-size: 1rem;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        button {
+            background: #3b82f6;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        button:hover {
+            background: #2563eb;
+        }
+
+        button:disabled {
+            background: #475569;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #475569;
+        }
+
+        .btn-success {
+            background: #10b981;
+        }
+
+        .btn-error {
+            background: #ef4444;
+        }
+
+        .endpoint-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .endpoint-btn {
+            padding: 10px;
+            text-align: left;
+            background: #334155;
+            border: 1px solid transparent;
+        }
+
+        .endpoint-btn.active {
+            border-color: #3b82f6;
+            background: #1e3a5f;
+        }
+
+        .row {
+            display: flex;
+            gap: 16px;
+        }
+
+        .col {
+            flex: 1;
+        }
+
+        pre {
+            background: #0f172a;
+            padding: 16px;
+            border-radius: 8px;
+            overflow: auto;
+            max-height: 400px;
+            font-size: 0.875rem;
+            white-space: pre-wrap;
+        }
+
+        .status {
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 0.875rem;
+            display: inline-block;
+        }
+
+        .status-success {
+            background: #10b981;
+        }
+
+        .status-error {
+            background: #ef4444;
+        }
+
+        .loading {
+            opacity: 0.7;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🚛 TruckMate API Tester</h1>
+        <p class="subtitle">Test backend Edge Functions and database operations</p>
+
+        <div class="section">
+            <h2>Configuration</h2>
+            <div class="row">
+                <div class="col">
+                    <label>Supabase URL</label>
+                    <input type="text" id="supabaseUrl" value="https://hgwjghlyaseqrvkvknji.supabase.co">
+                </div>
+                <div class="col">
+                    <label>Anon Key</label>
+                    <input type="text" id="anonKey"
+                        value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhnd2pnaGx5YXNlcXJ2a3ZrbmppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NTExMDksImV4cCI6MjA4NDQyNzEwOX0.eDO8TLerhKqz9OouhlB-gFWsESEgQEY9h2Ek0ZbzmVM">
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Select Endpoint</h2>
+            <div class="endpoint-list" id="endpoints"></div>
+        </div>
+
+        <div class="row">
+            <div class="col section">
+                <h2>Request</h2>
+                <label>Method</label>
+                <select id="method">
+                    <option value="GET">GET</option>
+                    <option value="POST" selected>POST</option>
+                    <option value="PATCH">PATCH</option>
+                    <option value="DELETE">DELETE</option>
+                </select>
+                <label>Path</label>
+                <input type="text" id="path" placeholder="/rest/v1/trips">
+                <label>Request Body (JSON)</label>
+                <textarea id="body" rows="10" placeholder='{"key": "value"}'></textarea>
+                <button onclick="sendRequest()" id="sendBtn">Send Request</button>
+            </div>
+            <div class="col section">
+                <h2>Response</h2>
+                <div id="responseStatus" style="margin-bottom: 12px;"></div>
+                <pre id="response">Click "Send Request" to test an endpoint</pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const endpoints = [
+            { name: 'Get Trips', method: 'GET', path: '/rest/v1/trips?select=*', body: null },
+            { name: 'Get Loads', method: 'GET', path: '/rest/v1/loads?select=*', body: null },
+            { name: 'Get Expenses', method: 'GET', path: '/rest/v1/expenses?select=*', body: null },
+            { name: 'Get Documents', method: 'GET', path: '/rest/v1/documents?select=*', body: null },
+            { name: 'Get Drivers', method: 'GET', path: '/rest/v1/profiles?role=eq.driver&select=*', body: null },
+            { name: 'Auth OTP Send', method: 'POST', path: '/functions/v1/auth-otp', body: { action: 'send', phone_number: '+1234567890' } },
+            { name: 'Auth OTP Verify', method: 'POST', path: '/functions/v1/auth-otp', body: { action: 'verify', phone_number: '+1234567890', otp: '123456' } },
+            { name: 'Process Document', method: 'POST', path: '/functions/v1/process-document', body: { document_id: 'uuid', document_type: 'rate_con', image_url: 'path' } },
+            { name: 'Generate Invoice', method: 'POST', path: '/functions/v1/generate-invoice', body: { trip_id: 'uuid' } },
+            { name: 'Semantic Search', method: 'POST', path: '/functions/v1/semantic-search', body: { query: 'expenses from Texas', organization_id: '11111111-1111-1111-1111-111111111111' } },
+        ];
+
+        function renderEndpoints() {
+            const container = document.getElementById('endpoints');
+            container.innerHTML = endpoints.map((e, i) =>
+                `<button class="endpoint-btn" onclick="selectEndpoint(${i})">${e.name}</button>`
+            ).join('');
+        }
+
+        function selectEndpoint(index) {
+            const e = endpoints[index];
+            document.getElementById('method').value = e.method;
+            document.getElementById('path').value = e.path;
+            document.getElementById('body').value = e.body ? JSON.stringify(e.body, null, 2) : '';
+            document.querySelectorAll('.endpoint-btn').forEach((btn, i) => btn.classList.toggle('active', i === index));
+        }
+
+        async function sendRequest() {
+            const btn = document.getElementById('sendBtn');
+            const url = document.getElementById('supabaseUrl').value;
+            const key = document.getElementById('anonKey').value;
+            const method = document.getElementById('method').value;
+            const path = document.getElementById('path').value;
+            const body = document.getElementById('body').value;
+
+            btn.disabled = true;
+            btn.textContent = 'Loading...';
+            document.getElementById('response').classList.add('loading');
+
+            try {
+                const options = {
+                    method,
+                    headers: {
+                        'apikey': key,
+                        'Authorization': `Bearer ${key}`,
+                        'Content-Type': 'application/json',
+                    },
+                };
+                if (body && method !== 'GET') options.body = body;
+
+                const startTime = Date.now();
+                const res = await fetch(url + path, options);
+                const duration = Date.now() - startTime;
+                const data = await res.json();
+
+                document.getElementById('responseStatus').innerHTML =
+                    `<span class="status ${res.ok ? 'status-success' : 'status-error'}">${res.status} ${res.statusText}</span> (${duration}ms)`;
+                document.getElementById('response').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('responseStatus').innerHTML = `<span class="status status-error">Error</span>`;
+                document.getElementById('response').textContent = error.message;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Send Request';
+                document.getElementById('response').classList.remove('loading');
+            }
+        }
+
+        renderEndpoints();
+        selectEndpoint(0);
+    </script>
+</body>
+
+</html>

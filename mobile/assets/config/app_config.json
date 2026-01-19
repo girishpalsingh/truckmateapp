@@ -1,0 +1,38 @@
+{
+    "supabase": {
+        "project_url": "https://hgwjghlyaseqrvkvknji.supabase.co",
+        "anon_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhnd2pnaGx5YXNlcXJ2a3ZrbmppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NTExMDksImV4cCI6MjA4NDQyNzEwOX0.eDO8TLerhKqz9OouhlB-gFWsESEgQEY9h2Ek0ZbzmVM"
+    },
+    "powersync": {
+        "instance_url": "",
+        "api_key": ""
+    },
+    "llm": {
+        "default_provider": "gemini",
+        "gemini": {
+            "api_key": ""
+        },
+        "openai": {
+            "api_key": ""
+        }
+    },
+    "twilio": {
+        "account_sid": "",
+        "auth_token": "",
+        "phone_number": ""
+    },
+    "resend": {
+        "api_key": "",
+        "from_email": "noreply@truckmate.app"
+    },
+    "development": {
+        "enabled": true,
+        "default_otp": "123456",
+        "skip_twilio": true,
+        "skip_email": true
+    },
+    "storage": {
+        "bucket_prefix": "truckmate",
+        "max_file_size_mb": 50
+    }
+}
