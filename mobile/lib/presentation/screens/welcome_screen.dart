@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/auth_provider.dart';
+import '../providers/auth_state.dart';
 import '../themes/app_theme.dart';
 
 /// Welcome screen with TruckMate branding
-class WelcomeScreen extends StatefulWidget {
+class WelcomeScreen extends ConsumerStatefulWidget {
   const WelcomeScreen({super.key});
 
   @override
-  State<WelcomeScreen> createState() => _WelcomeScreenState();
+  ConsumerState<WelcomeScreen> createState() => _WelcomeScreenState();
 }
 
-class _WelcomeScreenState extends State<WelcomeScreen>
+class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeIn;
@@ -39,12 +42,28 @@ class _WelcomeScreenState extends State<WelcomeScreen>
 
     _controller.forward();
 
-    // Auto-navigate after 2 seconds in development
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/login');
-      }
-    });
+    _controller.forward();
+
+    // Check session
+    ref.read(authProvider.notifier).checkSession();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Listen to changes in auth state to navigate
+    // We do it here or in build using listen
+  }
+
+  void _checkAuthAndNavigate(AuthState state) {
+    // If authenticated, go to dashboard
+    if (state.status == AuthStatus.authenticated) {
+      Navigator.pushReplacementNamed(context, '/dashboard');
+    }
+    // If explicitly unauthenticated (checkSession done), go to login
+    else if (state.status == AuthStatus.unauthenticated) {
+      Navigator.pushReplacementNamed(context, '/login');
+    }
   }
 
   @override
@@ -55,6 +74,11 @@ class _WelcomeScreenState extends State<WelcomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Listen for state changes to trigger navigation
+    ref.listen(authProvider, (previous, next) {
+      _checkAuthAndNavigate(next);
+    });
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(

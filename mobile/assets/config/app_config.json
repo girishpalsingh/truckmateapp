@@ -1,7 +1,7 @@
 {
     "supabase": {
-        "project_url": "https://hgwjghlyaseqrvkvknji.supabase.co",
-        "anon_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhnd2pnaGx5YXNlcXJ2a3ZrbmppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NTExMDksImV4cCI6MjA4NDQyNzEwOX0.eDO8TLerhKqz9OouhlB-gFWsESEgQEY9h2Ek0ZbzmVM"
+        "project_url": "http://127.0.0.1:54321",
+        "anon_key": "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH"
     },
     "powersync": {
         "instance_url": "",

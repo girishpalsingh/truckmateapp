@@ -188,7 +188,9 @@ async function generateEmbedding(apiKey: string, text: string): Promise<number[]
     return result.data?.[0]?.embedding || [];
 }
 
-serve(async (req) => {
+import { withLogging } from "../_shared/logger.ts";
+
+serve(async (req) => withLogging(req, async (req) => {
     if (req.method === "OPTIONS") {
         return new Response(null, { headers: corsHeaders });
     }
@@ -304,6 +306,20 @@ serve(async (req) => {
             }
         }
 
+        // Log document processing to audit trail
+        await supabase.rpc('log_document_event', {
+            p_document_id: document_id,
+            p_organization_id: doc.organization_id,
+            p_action: 'process',
+            p_storage_path: image_url,
+            p_metadata: {
+                llm_provider: llmProvider,
+                confidence,
+                document_type,
+                processed_at: new Date().toISOString(),
+            },
+        });
+
         return new Response(
             JSON.stringify({
                 success: true,
@@ -322,4 +338,4 @@ serve(async (req) => {
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
     }
-});
+}));

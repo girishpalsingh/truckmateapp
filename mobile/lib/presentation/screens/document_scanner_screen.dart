@@ -5,11 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:vision_text_recognition/vision_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import '../themes/app_theme.dart';
+import '../../services/document_sync_service.dart';
+import '../../data/models/pending_document_model.dart';
 
 /// Document Scanner Screen with platform-specific implementations
 /// - Android: Google ML Kit
@@ -31,6 +34,15 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
   String? _extractedText;
   final int _maxPages = 10;
 
+  // File Upload State
+  File? _uploadedPdf;
+  String? _uploadedPdfName;
+  Uint8List? _uploadedPdfBytes; // For web PDF support
+
+  // Sync Service
+  final DocumentSyncService _syncService = DocumentSyncService();
+  PendingDocument? _lastSavedDocument;
+
   final List<Map<String, String>> _documentTypes = [
     {
       'value': 'rate_con',
@@ -51,6 +63,10 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
   @override
   void initState() {
     super.initState();
+    // Initialize sync service for document upload/sync
+    _syncService.initialize();
+    print('[Scanner] DocumentSyncService initialized');
+
     if (!kIsWeb) {
       _initCamera();
     }
@@ -121,35 +137,82 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
     }
   }
 
-  Future<void> _pickFromGallery() async {
+  Future<void> _pickFile() async {
     try {
-      final picker = ImagePicker();
-      // Use pickMultiImage for web to allow multiple file selection
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+        allowMultiple:
+            kIsWeb, // Allow multiple only on web for now if needed, or stick to single for PDF
+      );
+
+      if (result == null) return;
+
       if (kIsWeb) {
-        final List<XFile> images = await picker.pickMultiImage();
-        if (images.isNotEmpty && _capturedPages.length < _maxPages) {
-          setState(() {
-            for (final img in images) {
+        // Web handling
+        for (final file in result.files) {
+          if (file.extension?.toLowerCase() == 'pdf') {
+            // Handle PDF on Web - store bytes directly
+            if (file.bytes != null) {
+              setState(() {
+                _uploadedPdfBytes = file.bytes;
+                _uploadedPdfName = file.name;
+                _uploadedPdf = null;
+                _capturedPages.clear();
+              });
+              _showMessage('PDF uploaded: ${file.name}');
+            }
+          } else {
+            // Image Web
+            // Use bytes to create XFile or similar
+            // Existing logic used XFile from image_picker
+            // We can convert PlatformFile to XFile
+            if (file.bytes != null) {
+              final xFile = XFile.fromData(file.bytes!, name: file.name);
               if (_capturedPages.length < _maxPages) {
-                _capturedPages.add(img);
+                setState(() {
+                  _capturedPages.add(xFile);
+                });
               }
             }
-          });
-          _showMessage('Added ${images.length} file(s)');
+          }
         }
+        _showMessage('Added ${result.files.length} file(s)');
       } else {
-        final XFile? image =
-            await picker.pickImage(source: ImageSource.gallery);
-        if (image != null && _capturedPages.length < _maxPages) {
-          final text = await _extractTextFromImage(image.path);
+        // Mobile handling
+        final path = result.files.single.path;
+        if (path == null) return;
+
+        final isPdf = path.toLowerCase().endsWith('.pdf');
+
+        if (isPdf) {
           setState(() {
-            _capturedPages.add(image);
-            _extractedText = text;
+            _uploadedPdf = File(path);
+            _uploadedPdfName = result.files.single.name;
+            _capturedPages.clear(); // Clear captured pages if PDF is uploaded
+            _extractedText = null;
           });
+          _showMessage('PDF uploaded: $_uploadedPdfName');
+        } else {
+          // Image
+          // If we had a PDF, clear it
+          setState(() {
+            _uploadedPdf = null;
+            _uploadedPdfName = null;
+          });
+
+          final XFile image = XFile(path);
+          if (_capturedPages.length < _maxPages) {
+            final text = await _extractTextFromImage(image.path);
+            setState(() {
+              _capturedPages.add(image);
+              _extractedText = text;
+            });
+          }
         }
       }
     } catch (e) {
-      debugPrint('🔴 Pick from gallery error: $e');
+      debugPrint('🔴 Pick file error: $e');
       _showMessage('Failed to pick file: $e');
     }
   }
@@ -183,9 +246,24 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
     }
   }
 
-  Future<void> _generatePDF() async {
-    if (_capturedPages.isEmpty) {
-      _showMessage('No pages to save');
+  Future<void> _saveDocument() async {
+    if (_capturedPages.isEmpty &&
+        _uploadedPdf == null &&
+        _uploadedPdfBytes == null) {
+      _showMessage('No pages or document to save');
+      return;
+    }
+
+    // Handle uploaded PDF (mobile)
+    if (_uploadedPdf != null) {
+      _onPdfReady(_uploadedPdf!);
+      return;
+    }
+
+    // Handle uploaded PDF bytes (web)
+    if (_uploadedPdfBytes != null) {
+      await _onPdfBytesReady(
+          _uploadedPdfBytes!, _uploadedPdfName ?? 'document.pdf');
       return;
     }
 
@@ -222,17 +300,128 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
         final file = File('${output.path}/$fileName');
         await file.writeAsBytes(pdfBytes);
 
-        setState(() => _isProcessing = false);
-
-        await Share.shareXFiles([
-          XFile(file.path),
-        ], text: 'TruckMate Document: $_selectedDocType');
+        _onPdfReady(file);
       }
     } catch (e) {
       debugPrint('🔴 PDF generation error: $e');
       setState(() => _isProcessing = false);
       _showMessage('Failed to generate PDF: $e');
     }
+  }
+
+  Future<void> _onPdfReady(File file) async {
+    // Save locally and queue for sync
+    final bytes = await file.readAsBytes();
+    await _saveToSyncQueue(bytes, file.path.split('/').last);
+  }
+
+  Future<void> _onPdfBytesReady(Uint8List bytes, String fileName) async {
+    // Save locally and queue for sync
+    await _saveToSyncQueue(bytes, fileName);
+  }
+
+  Future<void> _saveToSyncQueue(Uint8List bytes, String fileName) async {
+    print(
+        '[Scanner] ═══════════════════════════════════════════════════════════');
+    print('[Scanner] 💾 SAVING DOCUMENT TO SYNC QUEUE');
+    print(
+        '[Scanner] ═══════════════════════════════════════════════════════════');
+    print('[Scanner]    File name: $fileName');
+    print('[Scanner]    Bytes: ${bytes.length}');
+    print('[Scanner]    Document type: $_selectedDocType');
+
+    setState(() => _isProcessing = true);
+
+    try {
+      print('[Scanner] Calling syncService.saveAndQueueDocument...');
+      final pendingDoc = await _syncService.saveAndQueueDocument(
+        bytes: bytes,
+        documentType: _selectedDocType ?? 'other',
+        fileName: fileName,
+      );
+
+      print('[Scanner] ✅ Document queued successfully: ${pendingDoc.id}');
+
+      setState(() {
+        _lastSavedDocument = pendingDoc;
+        _isProcessing = false;
+      });
+
+      _showSaveSuccess(pendingDoc);
+    } catch (e, stack) {
+      print('[Scanner] ❌ Failed to save document: $e');
+      print('[Scanner] Stack: $stack');
+      setState(() => _isProcessing = false);
+      _showMessage('Failed to save document: $e');
+    }
+  }
+
+  void _showSaveSuccess(PendingDocument doc) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle, color: Colors.green, size: 64),
+            const SizedBox(height: 16),
+            const DualLanguageText(
+              primaryText: 'Document Saved',
+              subtitleText: 'ਦਸਤਾਵੇਜ਼ ਸੇਵ ਹੋ ਗਿਆ',
+              primaryStyle:
+                  TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              alignment: CrossAxisAlignment.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              doc.statusDisplay,
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Will sync automatically when online',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _resetScanner();
+                    },
+                    child: const Text('Scan Another'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.pop(context); // Go back to dashboard
+                    },
+                    child: const Text('Done'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _resetScanner() {
+    setState(() {
+      _capturedPages.clear();
+      _uploadedPdf = null;
+      _uploadedPdfName = null;
+      _uploadedPdfBytes = null;
+      _selectedDocType = null;
+      _lastSavedDocument = null;
+    });
   }
 
   Future<void> _downloadPdfWeb(Uint8List bytes, String fileName) async {
@@ -274,12 +463,14 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
           alignment: CrossAxisAlignment.center,
         ),
         actions: [
-          if (_capturedPages.isNotEmpty)
+          if (_capturedPages.isNotEmpty ||
+              _uploadedPdf != null ||
+              _uploadedPdfBytes != null)
             TextButton.icon(
-              onPressed: _isProcessing ? null : _generatePDF,
+              onPressed: _isProcessing ? null : _saveDocument,
               icon: const Icon(Icons.save, color: Colors.white),
               label: Text(
-                '${_capturedPages.length}',
+                '${_capturedPages.isNotEmpty ? _capturedPages.length : "PDF"}',
                 style: const TextStyle(color: Colors.white),
               ),
             ),
@@ -294,7 +485,9 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
             // Camera Preview or Upload Area
             Expanded(
               flex: 3,
-              child: kIsWeb ? _buildWebUpload() : _buildCameraPreview(),
+              child: (_uploadedPdf != null || _uploadedPdfBytes != null)
+                  ? _buildPdfPreview()
+                  : (kIsWeb ? _buildWebUpload() : _buildCameraPreview()),
             ),
 
             // Captured Pages Preview
@@ -402,6 +595,45 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
     );
   }
 
+  Widget _buildPdfPreview() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.primaryColor),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.picture_as_pdf, size: 80, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(
+              _uploadedPdfName ?? 'Document.pdf',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _uploadedPdf = null;
+                  _uploadedPdfName = null;
+                  _uploadedPdfBytes = null;
+                });
+              },
+              child:
+                  const Text('Remove PDF', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildWebUpload() {
     return Container(
       margin: const EdgeInsets.all(16),
@@ -414,7 +646,7 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
         borderRadius: BorderRadius.circular(16),
       ),
       child: InkWell(
-        onTap: _pickFromGallery,
+        onTap: _pickFile,
         borderRadius: BorderRadius.circular(16),
         child: Center(
           child: Column(
@@ -518,10 +750,11 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          // Gallery
+          // File Upload (Gallery/Files)
           IconButton(
-            onPressed: _pickFromGallery,
-            icon: const Icon(Icons.photo_library),
+            onPressed: _pickFile,
+            icon: const Icon(
+                Icons.upload_file), // Changed icon to represent generic upload
             iconSize: 32,
             color: AppTheme.primaryColor,
           ),
@@ -560,10 +793,18 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
 
           // Done / Save
           IconButton(
-            onPressed: _capturedPages.isEmpty ? null : _generatePDF,
+            onPressed: (_capturedPages.isEmpty &&
+                    _uploadedPdf == null &&
+                    _uploadedPdfBytes == null)
+                ? null
+                : _saveDocument,
             icon: const Icon(Icons.check_circle),
             iconSize: 32,
-            color: _capturedPages.isEmpty ? Colors.grey : AppTheme.successColor,
+            color: (_capturedPages.isEmpty &&
+                    _uploadedPdf == null &&
+                    _uploadedPdfBytes == null)
+                ? Colors.grey
+                : AppTheme.successColor,
           ),
         ],
       ),

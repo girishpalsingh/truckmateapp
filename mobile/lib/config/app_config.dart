@@ -55,9 +55,8 @@ class AppConfig {
   factory AppConfig._default() {
     return AppConfig(
       supabase: SupabaseConfig(
-        projectUrl: 'https://hgwjghlyaseqrvkvknji.supabase.co',
-        anonKey:
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhnd2pnaGx5YXNlcXJ2a3ZrbmppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4NTExMDksImV4cCI6MjA4NDQyNzEwOX0.eDO8TLerhKqz9OouhlB-gFWsESEgQEY9h2Ek0ZbzmVM',
+        projectUrl: 'http://127.0.0.1:54321',
+        anonKey: 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH',
       ),
       powersync: PowerSyncConfig(instanceUrl: '', apiKey: ''),
       llm: LLMConfig(defaultProvider: 'gemini', geminiApiKey: ''),
@@ -68,6 +67,8 @@ class AppConfig {
         defaultOtp: '123456',
         skipTwilio: true,
         skipEmail: true,
+        devUserId: 'dev-user-id',
+        devOrganizationId: '11111111-1111-1111-1111-111111111111',
       ),
       storage: StorageConfig(bucketPrefix: 'truckmate', maxFileSizeMb: 50),
     );
@@ -169,12 +170,16 @@ class DevelopmentConfig {
   final String defaultOtp;
   final bool skipTwilio;
   final bool skipEmail;
+  final String devUserId;
+  final String devOrganizationId;
 
   DevelopmentConfig({
     required this.enabled,
     required this.defaultOtp,
     required this.skipTwilio,
     required this.skipEmail,
+    required this.devUserId,
+    required this.devOrganizationId,
   });
 
   factory DevelopmentConfig.fromJson(Map<String, dynamic> json) {
@@ -183,6 +188,9 @@ class DevelopmentConfig {
       defaultOtp: json['default_otp'] ?? '123456',
       skipTwilio: json['skip_twilio'] ?? false,
       skipEmail: json['skip_email'] ?? false,
+      devUserId: json['dev_user_id'] ?? 'dev-user-id',
+      devOrganizationId:
+          json['dev_organization_id'] ?? '11111111-1111-1111-1111-111111111111',
     );
   }
 }

@@ -1,7 +1,8 @@
+import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/app_config.dart';
+import '../data/models/user_profile.dart';
 
-/// Authentication service for OTP-based login
 class AuthService {
   final SupabaseClient _client;
   final AppConfig _config;
@@ -10,100 +11,106 @@ class AuthService {
       : _client = client ?? Supabase.instance.client,
         _config = config ?? AppConfig.instance;
 
-  /// Send OTP to phone number and email
-  Future<OTPSendResult> sendOTP({
-    required String phoneNumber,
-    String? email,
-  }) async {
+  /// Sends an OTP via the Edge Function
+  Future<OTPSendResult> sendOTP({required String phoneNumber}) async {
     try {
-      // In development mode, skip actual sending
-      if (_config.isDevelopment) {
-        return OTPSendResult(
-          success: true,
-          message:
-              'Development mode: Use OTP ${_config.development.defaultOtp}',
-          devMode: true,
-        );
-      }
-
       final response = await _client.functions.invoke(
         'auth-otp',
-        body: {'action': 'send', 'phone_number': phoneNumber, 'email': email},
+        body: {'action': 'send', 'phone_number': phoneNumber},
       );
+
+      dynamic responseData = response.data;
+      if (responseData is String) {
+        try {
+          responseData = jsonDecode(responseData);
+        } catch (e) {
+          // If decoding fails, we'll keep it as string or handle it later
+          print('Error decoding response data: $e');
+        }
+      }
 
       if (response.status != 200) {
         return OTPSendResult(
           success: false,
           message: 'Failed to send OTP',
-          error: response.data?['error'],
+          error: responseData is Map
+              ? responseData['error']
+              : responseData.toString(),
         );
       }
+
+      final data = responseData as Map<String, dynamic>;
 
       return OTPSendResult(
         success: true,
         message: 'OTP sent successfully',
-        devMode: response.data?['dev_mode'] ?? false,
+        devMode: data['dev'] == true || data['dev_mode'] == true,
       );
     } catch (e) {
       return OTPSendResult(
         success: false,
-        message: 'Failed to send OTP',
+        message: 'Something went wrong: $e',
         error: e.toString(),
       );
     }
   }
 
-  /// Verify OTP and log in
+  /// Verifies the OTP and establishes the Supabase Session
   Future<OTPVerifyResult> verifyOTP({
     required String phoneNumber,
     required String otp,
   }) async {
     try {
-      // In development mode, check against default OTP
-      if (_config.isDevelopment && otp == _config.development.defaultOtp) {
-        // For dev mode, create a mock session
-        return OTPVerifyResult(
-          success: true,
-          userExists: true,
-          message: 'Development login successful',
-          profile: UserProfile(
-            id: 'dev-user-id',
-            fullName: 'Dev Driver',
-            phoneNumber: phoneNumber,
-            role: 'driver',
-            organizationId: '11111111-1111-1111-1111-111111111111',
-          ),
-        );
-      }
-
       final response = await _client.functions.invoke(
         'auth-otp',
         body: {'action': 'verify', 'phone_number': phoneNumber, 'otp': otp},
       );
 
+      dynamic responseData = response.data;
+      if (responseData is String) {
+        try {
+          responseData = jsonDecode(responseData);
+        } catch (e) {
+          print('Error decoding verify response data: $e');
+        }
+      }
+
       if (response.status != 200) {
         return OTPVerifyResult(
           success: false,
-          message: response.data?['error'] ?? 'Invalid OTP',
+          message: responseData is Map
+              ? responseData['error'] ?? 'Invalid OTP'
+              : 'Invalid OTP',
         );
       }
 
-      final data = response.data;
+      final data = responseData;
+      // Ensure data is accessable as Map if possible, though dynamic usually works.
 
-      if (data['user_exists'] == true) {
-        return OTPVerifyResult(
-          success: true,
-          userExists: true,
-          message: 'Login successful',
-          profile: UserProfile.fromJson(data['profile']),
-        );
+      final sessionData = data['session'];
+
+      // --- CRITICAL STEP: ESTABLISH AUTH CONTEXT ---
+      if (sessionData != null && sessionData['refresh_token'] != null) {
+        // We use setSession with the refresh_token.
+        // This handles the JWT acquisition and background refreshing for you.
+        await _client.auth.setSession(sessionData['refresh_token']);
       } else {
-        return OTPVerifyResult(
-          success: true,
-          userExists: false,
-          message: 'Please complete registration',
-        );
+        throw 'No session data returned from server';
       }
+
+      // Profile mapping
+      final profileData = data['profile'] as Map<String, dynamic>?;
+      final userId = data['user']?['id'] ?? data['profile']?['id'];
+
+      return OTPVerifyResult(
+        success: true,
+        userExists: profileData != null,
+        message: profileData != null
+            ? 'Login successful'
+            : 'Please complete registration',
+        userId: userId,
+        profile: profileData != null ? UserProfile.fromJson(profileData) : null,
+      );
     } catch (e) {
       return OTPVerifyResult(
         success: false,
@@ -112,18 +119,14 @@ class AuthService {
     }
   }
 
-  /// Check if user is logged in
   bool get isLoggedIn => _client.auth.currentSession != null;
-
-  /// Get current user
   User? get currentUser => _client.auth.currentUser;
 
-  /// Sign out
-  Future<void> signOut() async {
-    await _client.auth.signOut();
-  }
+  Future<void> signOut() async => await _client.auth.signOut();
 }
 
+// ... (OTPSendResult and OTPVerifyResult classes remain the same)
+/// Result object for the [AuthService.sendOTP] operation.
 class OTPSendResult {
   final bool success;
   final String message;
@@ -138,45 +141,21 @@ class OTPSendResult {
   });
 }
 
+/// Result object for the [AuthService.verifyOTP] operation.
 class OTPVerifyResult {
   final bool success;
+
+  /// True if the user has a profile in the database, false if they are a new user.
   final bool userExists;
   final String message;
+  final String? userId;
   final UserProfile? profile;
 
   OTPVerifyResult({
     required this.success,
     this.userExists = false,
     required this.message,
+    this.userId,
     this.profile,
   });
-}
-
-class UserProfile {
-  final String id;
-  final String fullName;
-  final String phoneNumber;
-  final String? email;
-  final String role;
-  final String? organizationId;
-
-  UserProfile({
-    required this.id,
-    required this.fullName,
-    required this.phoneNumber,
-    this.email,
-    required this.role,
-    this.organizationId,
-  });
-
-  factory UserProfile.fromJson(Map<String, dynamic> json) {
-    return UserProfile(
-      id: json['id'],
-      fullName: json['full_name'] ?? '',
-      phoneNumber: json['phone_number'] ?? '',
-      email: json['email_address'],
-      role: json['role'] ?? 'driver',
-      organizationId: json['organization_id'],
-    );
-  }
 }

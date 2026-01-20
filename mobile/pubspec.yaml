@@ -37,6 +37,7 @@ dependencies:
   vision_text_recognition: ^1.0.2
   camera: ^0.10.5+9
   image_picker: ^1.0.7
+  file_picker: ^6.1.1
   pdf: ^3.10.7
   share_plus: ^7.2.1
   

@@ -4,26 +4,26 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 interface EmailRequest {
-    to: string | string[];
-    subject: string;
-    html?: string;
-    text?: string;
-    template?: "invoice" | "approval_request" | "ifta_report" | "otp";
-    template_data?: Record<string, any>;
-    attachments?: Array<{
-        filename: string;
-        content: string; // base64
-        content_type: string;
-    }>;
+  to: string | string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  template?: "invoice" | "approval_request" | "ifta_report" | "otp";
+  template_data?: Record<string, any>;
+  attachments?: Array<{
+    filename: string;
+    content: string; // base64
+    content_type: string;
+  }>;
 }
 
 const emailTemplates = {
-    invoice: (data: any) => `
+  invoice: (data: any) => `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
       <h1 style="color: #1a365d;">Invoice #${data.invoice_number}</h1>
       <p>Dear ${data.recipient_name},</p>
@@ -64,7 +64,7 @@ const emailTemplates = {
     </div>
   `,
 
-    approval_request: (data: any) => `
+  approval_request: (data: any) => `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
       <h1 style="color: #1a365d;">Invoice Ready for Approval</h1>
       <p>A new invoice is ready for your review and approval.</p>
@@ -85,7 +85,7 @@ const emailTemplates = {
     </div>
   `,
 
-    ifta_report: (data: any) => `
+  ifta_report: (data: any) => `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
       <h1 style="color: #1a365d;">IFTA Report - ${data.quarter}</h1>
       <p>Your quarterly IFTA report is ready for review.</p>
@@ -107,7 +107,7 @@ const emailTemplates = {
     </div>
   `,
 
-    otp: (data: any) => `
+  otp: (data: any) => `
     <div style="font-family: Arial, sans-serif; max-width: 400px; margin: 0 auto; padding: 20px;">
       <h2 style="color: #1a365d;">TruckMate Verification</h2>
       <p>Your verification code is:</p>
@@ -120,94 +120,96 @@ const emailTemplates = {
   `,
 };
 
-serve(async (req) => {
-    if (req.method === "OPTIONS") {
-        return new Response(null, { headers: corsHeaders });
+import { withLogging } from "../_shared/logger.ts";
+
+serve(async (req) => withLogging(req, async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const resendKey = Deno.env.get("RESEND_API_KEY");
+    const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "noreply@truckmate.app";
+    const devMode = Deno.env.get("DEV_MODE") === "true";
+
+    if (!resendKey && !devMode) {
+      return new Response(
+        JSON.stringify({ error: "Email service not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    try {
-        const resendKey = Deno.env.get("RESEND_API_KEY");
-        const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "noreply@truckmate.app";
-        const devMode = Deno.env.get("DEV_MODE") === "true";
+    const body: EmailRequest = await req.json();
+    const { to, subject, html, text, template, template_data, attachments } = body;
 
-        if (!resendKey && !devMode) {
-            return new Response(
-                JSON.stringify({ error: "Email service not configured" }),
-                { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-        }
-
-        const body: EmailRequest = await req.json();
-        const { to, subject, html, text, template, template_data, attachments } = body;
-
-        if (!to || !subject) {
-            return new Response(
-                JSON.stringify({ error: "to and subject are required" }),
-                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-        }
-
-        // Generate HTML from template if specified
-        let emailHtml = html;
-        if (template && template_data && emailTemplates[template]) {
-            emailHtml = emailTemplates[template](template_data);
-        }
-
-        if (devMode) {
-            console.log(`[DEV MODE] Would send email to ${to}`);
-            console.log(`Subject: ${subject}`);
-            console.log(`HTML: ${emailHtml?.substring(0, 200)}...`);
-
-            return new Response(
-                JSON.stringify({ success: true, dev_mode: true, message: "Email logged (dev mode)" }),
-                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-        }
-
-        // Prepare attachments for Resend
-        const resendAttachments = attachments?.map(att => ({
-            filename: att.filename,
-            content: att.content,
-            type: att.content_type,
-        }));
-
-        const response = await fetch("https://api.resend.com/emails", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${resendKey}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                from: fromEmail,
-                to: Array.isArray(to) ? to : [to],
-                subject,
-                html: emailHtml,
-                text,
-                attachments: resendAttachments,
-            }),
-        });
-
-        if (!response.ok) {
-            const error = await response.text();
-            console.error("Resend error:", error);
-            return new Response(
-                JSON.stringify({ error: "Failed to send email" }),
-                { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-        }
-
-        const result = await response.json();
-
-        return new Response(
-            JSON.stringify({ success: true, message_id: result.id }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-
-    } catch (error) {
-        console.error("Email send error:", error);
-        return new Response(
-            JSON.stringify({ error: error.message || "Email send failed" }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+    if (!to || !subject) {
+      return new Response(
+        JSON.stringify({ error: "to and subject are required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
-});
+
+    // Generate HTML from template if specified
+    let emailHtml = html;
+    if (template && template_data && emailTemplates[template]) {
+      emailHtml = emailTemplates[template](template_data);
+    }
+
+    if (devMode) {
+      console.log(`[DEV MODE] Would send email to ${to}`);
+      console.log(`Subject: ${subject}`);
+      console.log(`HTML: ${emailHtml?.substring(0, 200)}...`);
+
+      return new Response(
+        JSON.stringify({ success: true, dev_mode: true, message: "Email logged (dev mode)" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Prepare attachments for Resend
+    const resendAttachments = attachments?.map(att => ({
+      filename: att.filename,
+      content: att.content,
+      type: att.content_type,
+    }));
+
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${resendKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: Array.isArray(to) ? to : [to],
+        subject,
+        html: emailHtml,
+        text,
+        attachments: resendAttachments,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error("Resend error:", error);
+      return new Response(
+        JSON.stringify({ error: "Failed to send email" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const result = await response.json();
+
+    return new Response(
+      JSON.stringify({ success: true, message_id: result.id }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
+  } catch (error) {
+    console.error("Email send error:", error);
+    return new Response(
+      JSON.stringify({ error: error.message || "Email send failed" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+}));

@@ -19,8 +19,14 @@ void main() async {
   // Catch Flutter framework errors
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-    debugPrint('🔴 Flutter Error: ${details.exception}');
-    debugPrint('Stack trace:\n${details.stack}');
+    // Use print() for web console visibility
+    print('═══════════════════════════════════════════════════════════');
+    print('🔴 FLUTTER ERROR: ${details.exception}');
+    print('───────────────────────────────────────────────────────────');
+    print('Library: ${details.library}');
+    print('Context: ${details.context}');
+    print('Stack trace:\n${details.stack}');
+    print('═══════════════════════════════════════════════════════════');
   };
 
   // Catch async errors not handled by Flutter
@@ -35,22 +41,25 @@ void main() async {
 
     // Load configuration
     final config = await AppConfig.load();
-    debugPrint('✅ Config loaded: dev mode = ${config.isDevelopment}');
+    print('✅ Config loaded: dev mode = ${config.isDevelopment}');
 
     // Initialize Supabase
     await Supabase.initialize(
       url: config.supabase.projectUrl,
       anonKey: config.supabase.anonKey,
     );
-    debugPrint('✅ Supabase initialized');
+    print('✅ Supabase initialized');
 
     // Initialize PowerSync for offline support
     // await PowerSyncService.initialize();
 
     runApp(const ProviderScope(child: TruckMateApp()));
   }, (error, stackTrace) {
-    debugPrint('🔴 Uncaught Error: $error');
-    debugPrint('Stack trace:\n$stackTrace');
+    print('═══════════════════════════════════════════════════════════');
+    print('🔴 UNCAUGHT ERROR: $error');
+    print('───────────────────────────────────────────────────────────');
+    print('Stack trace:\n$stackTrace');
+    print('═══════════════════════════════════════════════════════════');
   });
 }
 

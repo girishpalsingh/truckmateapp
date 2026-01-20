@@ -98,7 +98,9 @@ Respond with JSON only:
     return { searchTerms: query, filters: {} };
 }
 
-serve(async (req) => {
+import { withLogging } from "../_shared/logger.ts";
+
+serve(async (req) => withLogging(req, async (req) => {
     if (req.method === "OPTIONS") {
         return new Response(null, { headers: corsHeaders });
     }
@@ -225,4 +227,4 @@ serve(async (req) => {
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
     }
-});
+}));
