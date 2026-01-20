@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -69,9 +70,9 @@ class DocumentSyncService {
         Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
 
     // Check if online and sync pending documents
-    final result = await Connectivity().checkConnectivity();
-    _log('📡 Initial connectivity: $result');
-    if (result != ConnectivityResult.none) {
+    final hasInternet = await _hasInternetConnection();
+    _log('📡 Initial internet check: $hasInternet');
+    if (hasInternet) {
       syncPendingDocuments();
     }
   }
@@ -81,11 +82,23 @@ class DocumentSyncService {
     _statusController.close();
   }
 
-  void _onConnectivityChanged(ConnectivityResult result) {
+  Future<void> _onConnectivityChanged(ConnectivityResult result) async {
     _log('📶 Connectivity changed: $result');
-    if (result != ConnectivityResult.none) {
-      _log('📶 Online - starting document sync');
+    // Always check for actual internet access, as ConnectivityResult can be unreliable
+    // (especially on iOS Simulator where it may report 'none' despite having internet)
+    if (await _hasInternetConnection()) {
+      _log('📶 Online (Confirmed) - starting document sync');
       syncPendingDocuments();
+    }
+  }
+
+  /// Check for actual internet connection by resolving a domain
+  Future<bool> _hasInternetConnection() async {
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      return false;
     }
   }
 
@@ -131,9 +144,10 @@ class DocumentSyncService {
     _log('   Local path: ${pendingDoc.localPath}');
 
     // Try to sync immediately if online
-    final connectivity = await Connectivity().checkConnectivity();
-    _log('📡 Current connectivity: $connectivity');
-    if (connectivity != ConnectivityResult.none) {
+    // Try to sync immediately if online
+    final hasInternet = await _hasInternetConnection();
+    _log('📡 Current internet status: $hasInternet');
+    if (hasInternet) {
       _log('🚀 Online - triggering immediate sync...');
       syncPendingDocuments();
     } else {

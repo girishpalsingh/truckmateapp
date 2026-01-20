@@ -1,7 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { config } from "../_shared/config.ts";
 import { withLogging } from "../_shared/logger.ts";
+import { getUserByPhone, getOrganization } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,6 +15,196 @@ const supabaseAdmin = createClient(
   config.supabase.serviceRoleKey!
 );
 
+// ============================================
+// ACTION: SEND OTP
+// ============================================
+async function handleSendOtp(
+  supabase: SupabaseClient,
+  phoneNumber: string
+): Promise<Response> {
+  // Check if user exists and is active
+  const { user, profile, error: userError } = await getUserByPhone(supabase, phoneNumber);
+
+  if (userError) {
+    throw userError;
+  }
+
+  if (!user || !profile) {
+    return new Response(
+      JSON.stringify({ error: "User or profile does not exist" }),
+      { status: 404, headers: corsHeaders }
+    );
+  }
+
+
+
+
+
+  // Check if user is active
+  if (!profile?.is_active) {
+    return new Response(
+      JSON.stringify({ error: "User is not active" }),
+      { status: 403, headers: corsHeaders }
+    );
+  }
+
+  // Check organization assignment
+  const orgId = profile?.organization_id;
+  if (!orgId) {
+    return new Response(
+      JSON.stringify({ error: "User has no organization assigned" }),
+      { status: 403, headers: corsHeaders }
+    );
+  }
+
+  // Validate organization exists and is active
+  const { data: org, error: orgError } = await getOrganization(supabase, orgId);
+
+  if (orgError || !org) {
+    return new Response(
+      JSON.stringify({ error: "Organization not found" }),
+      { status: 404, headers: corsHeaders }
+    );
+  }
+
+  if (!org.is_active) {
+    return new Response(
+      JSON.stringify({ error: "Organization is not active" }),
+      { status: 403, headers: corsHeaders }
+    );
+  }
+
+  // Send OTP
+  const { error } = await supabase.auth.signInWithOtp({
+    phone: phoneNumber,
+    options: {
+      should_create_user: false,
+    }
+  });
+
+  if (error) {
+    console.log(error);
+    throw error;
+  }
+
+  return new Response(
+    JSON.stringify({ success: true, message: "OTP sent successfully" }),
+    { headers: corsHeaders }
+  );
+}
+
+// ============================================
+// ACTION: VERIFY OTP
+// ============================================
+async function handleVerifyOtp(
+  supabase: SupabaseClient,
+  phoneNumber: string,
+  otp: string
+): Promise<Response> {
+  if (!otp) {
+    return new Response(
+      JSON.stringify({ error: "OTP is required" }),
+      { status: 400, headers: corsHeaders }
+    );
+  }
+
+  // Verify OTP against Supabase Auth
+  const { data, error } = await supabase.auth.verifyOtp({
+    phone: phoneNumber,
+    token: otp,
+    type: 'sms',
+  });
+
+  if (error) throw error;
+
+  const { user, profile, error: userError } = await getUserByPhone(supabase, phoneNumber);
+
+  if (userError) {
+    throw userError;
+  }
+
+  if (!user || !profile) {
+    return new Response(
+      JSON.stringify({ error: "User does not exist" }),
+      { status: 404, headers: corsHeaders }
+    );
+  }
+
+
+
+  const session = data.session;
+  const authUser = data.user;
+  // Get profile to check is_active status
+
+
+  // Get organization details
+  const { data: organization } = profile?.organization_id
+    ? await getOrganization(supabase, profile.organization_id)
+    : { data: null };
+  //if organization is null, return error
+  if (!organization) {
+    return new Response(
+      JSON.stringify({ error: "Organization not found" }),
+      { status: 404, headers: corsHeaders }
+    );
+  }
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      session,
+      user,
+      profile,
+      organization,
+      message: "Authentication successful",
+    }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+// ============================================
+// ACTION: LOGOUT
+// ============================================
+async function handleLogout(
+  supabase: SupabaseClient,
+  req: Request
+): Promise<Response> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
+    return new Response(
+      JSON.stringify({ error: "Authorization header required" }),
+      { status: 401, headers: corsHeaders }
+    );
+  }
+
+  const token = authHeader.replace("Bearer ", "");
+
+  // Validate the token
+  const { data: { user }, error: getUserError } = await supabase.auth.getUser(token);
+
+  if (getUserError || !user) {
+    return new Response(
+      JSON.stringify({ error: "Invalid or expired token" }),
+      { status: 401, headers: corsHeaders }
+    );
+  }
+
+  // Sign out the user (invalidates the session)
+  const { error: signOutError } = await supabase.auth.admin.signOut(token);
+
+  if (signOutError) {
+    throw signOutError;
+  }
+
+  return new Response(
+    JSON.stringify({ success: true, message: "Logged out successfully" }),
+    { status: 200, headers: corsHeaders }
+  );
+}
+
+// ============================================
+// MAIN HANDLER
+// ============================================
 serve(async (req) => withLogging(req, async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -22,101 +213,30 @@ serve(async (req) => withLogging(req, async (req) => {
   try {
     const { action, phone_number, otp } = await req.json();
 
-    if (!phone_number) {
+    // Validate phone number for send/verify actions
+    if ((action === "send" || action === "verify") && !phone_number) {
       return new Response(
         JSON.stringify({ error: "Phone number is required" }),
         { status: 400, headers: corsHeaders }
       );
     }
 
-    // --- ACTION: SEND ---
-    if (action === "send") {
-      // if (config.development.enabled) {
-      //   console.log(`[DEV] Skipping SMS. Use code: ${config.development.default_otp}`);
-      //   return new Response(
-      //     JSON.stringify({ success: true, message: "Dev mode: SMS skipped", dev: true }),
-      //     { headers: corsHeaders }
-      //   );
-      // }
+    switch (action) {
+      case "send":
+        return await handleSendOtp(supabaseAdmin, phone_number);
 
-      const { error } = await supabaseAdmin.auth.signInWithOtp({
-        phone: phone_number,
-        options: {
-          should_create_user: false,
-        }
-      });
+      case "verify":
+        return await handleVerifyOtp(supabaseAdmin, phone_number, otp);
 
-      if (error) {
-        console.log(error);
-        throw error;
-      }
+      case "logout":
+        return await handleLogout(supabaseAdmin, req);
 
-      return new Response(
-        JSON.stringify({ success: true, message: "OTP sent successfully" }),
-        { headers: corsHeaders }
-      );
-    }
-
-    // --- ACTION: VERIFY ---
-    if (action === "verify") {
-      if (!otp) {
+      default:
         return new Response(
-          JSON.stringify({ error: "OTP is required" }),
+          JSON.stringify({ error: "Invalid action" }),
           { status: 400, headers: corsHeaders }
         );
-      }
-
-      let session;
-      let user;
-
-      // if (config.development.enabled && otp === config.development.default_otp) {
-      //   // In Dev Mode, we use admin.generateLink to "force" a real session
-      //   // This ensures the frontend gets a VALID JWT for RLS headers
-      //   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-      //     type: 'magiclink',
-      //     email: email || `${phone_number.replace('+', '')}@phone.truckmate.app`,
-      //     options: { data: { phone_number } }
-      //   });
-
-      //   if (error) throw error;
-      //   session = data.session;
-      //   user = data.user;
-      // } else {
-      // PRODUCTION: Real OTP verification against Supabase Auth
-      const { data, error } = await supabaseAdmin.auth.verifyOtp({
-        phone: phone_number,
-        token: otp,
-        type: 'sms',
-      });
-
-      if (error) throw error;
-      session = data.session;
-      user = data.user;
-      // }
-
-      // Sync/Check User Profile in your 'profiles' table
-      const { data: profile } = await supabaseAdmin
-        .from("profiles")
-        .select("*")
-        .eq("phone_number", phone_number)
-        .single();
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          session, // This contains the access_token (JWT) for auth headers
-          user,
-          profile,
-          message: "Authentication successful",
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
     }
-
-    return new Response(
-      JSON.stringify({ error: "Invalid action" }),
-      { status: 400, headers: corsHeaders }
-    );
 
   } catch (error) {
     console.error("Auth Error:", error.message);
