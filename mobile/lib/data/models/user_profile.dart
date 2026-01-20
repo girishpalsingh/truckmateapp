@@ -27,4 +27,9 @@ class UserProfile {
       organizationId: json['organization_id'],
     );
   }
+
+  @override
+  String toString() {
+    return 'UserProfile(id: $id, fullName: $fullName, phoneNumber: $phoneNumber, email: $email, role: $role, organizationId: $organizationId)';
+  }
 }

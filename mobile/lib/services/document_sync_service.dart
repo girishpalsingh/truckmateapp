@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 import '../data/models/pending_document_model.dart';
 import 'local_document_storage.dart';
+import '../core/utils/user_utils.dart';
 
 /// Service for syncing documents with server and handling LLM processing
 class DocumentSyncService {
@@ -36,31 +37,8 @@ class DocumentSyncService {
   Future<String?> _getUserOrganization() async {
     if (_userOrganizationId != null) return _userOrganizationId;
 
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        _log('⚠️ No authenticated user');
-        return null;
-      }
-
-      final response = await _supabase
-          .from('profiles')
-          .select('organization_id')
-          .eq('id', userId)
-          .maybeSingle();
-
-      if (response != null && response['organization_id'] != null) {
-        _userOrganizationId = response['organization_id'] as String;
-        _log('👤 User organization: $_userOrganizationId');
-        return _userOrganizationId;
-      }
-
-      _log('⚠️ User has no organization assigned');
-      return null;
-    } catch (e) {
-      _log('❌ Failed to get user organization: $e');
-      return null;
-    }
+    _userOrganizationId = await UserUtils.getUserOrganization();
+    return _userOrganizationId;
   }
 
   /// Initialize sync service and start listening for connectivity

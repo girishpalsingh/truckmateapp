@@ -67,7 +67,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (next.devMode &&
         next.otpSent == false &&
         _phoneController.text.isEmpty) {
-      _phoneController.text = '+11234567890';
+      _phoneController.text = '+13001234572';
     }
 
     if (next.otpSent && next.devMode && _otpController.text.isEmpty) {

@@ -76,6 +76,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     );
 
     if (result.success) {
+      print("result successful of login" + result.toString());
       // Persist session
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('is_logged_in', true);

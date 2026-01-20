@@ -10,10 +10,8 @@ const corsHeaders = {
 };
 
 // Use Service Role Key to allow admin actions (like generating sessions)
-const supabaseAdmin = createClient(
-  config.supabase.url!,
-  config.supabase.serviceRoleKey!
-);
+// Moved to local scope in serve handler
+
 
 // ============================================
 // ACTION: SEND OTP
@@ -97,7 +95,7 @@ async function handleSendOtp(
 // ACTION: VERIFY OTP
 // ============================================
 async function handleVerifyOtp(
-  supabase: SupabaseClient,
+  supabaseAdmin: SupabaseClient,
   phoneNumber: string,
   otp: string
 ): Promise<Response> {
@@ -108,8 +106,20 @@ async function handleVerifyOtp(
     );
   }
 
-  // Verify OTP against Supabase Auth
-  const { data, error } = await supabase.auth.verifyOtp({
+  // Create a separate client for verification to avoid polluting the admin client with a user session
+  // We use the same service role key, but a fresh instance.
+  const verificationClient = createClient(
+    config.supabase.url!,
+    config.supabase.serviceRoleKey!,
+    {
+      auth: {
+        persistSession: false,
+      }
+    }
+  );
+
+  // Verify OTP against Supabase Auth using the isolated client
+  const { data, error } = await verificationClient.auth.verifyOtp({
     phone: phoneNumber,
     token: otp,
     type: 'sms',
@@ -117,7 +127,10 @@ async function handleVerifyOtp(
 
   if (error) throw error;
 
-  const { user, profile, error: userError } = await getUserByPhone(supabase, phoneNumber);
+  console.log(`[handleVerifyOtp] verifying phone: '${phoneNumber}'`);
+
+  // Use the clean supabaseAdmin client for subsequent DB queries
+  const { user, profile, error: userError } = await getUserByPhone(supabaseAdmin, phoneNumber);
 
   if (userError) {
     throw userError;
@@ -139,7 +152,7 @@ async function handleVerifyOtp(
 
   // Get organization details
   const { data: organization } = profile?.organization_id
-    ? await getOrganization(supabase, profile.organization_id)
+    ? await getOrganization(supabaseAdmin, profile.organization_id)
     : { data: null };
   //if organization is null, return error
   if (!organization) {
@@ -212,6 +225,17 @@ serve(async (req) => withLogging(req, async (req) => {
 
   try {
     const { action, phone_number, otp } = await req.json();
+
+    // Instantiate Supabase Admin Client for this request
+    const supabaseAdmin = createClient(
+      config.supabase.url!,
+      config.supabase.serviceRoleKey!,
+      {
+        auth: {
+          persistSession: false,
+        },
+      }
+    );
 
     // Validate phone number for send/verify actions
     if ((action === "send" || action === "verify") && !phone_number) {

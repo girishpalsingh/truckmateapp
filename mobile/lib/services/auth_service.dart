@@ -158,4 +158,8 @@ class OTPVerifyResult {
     this.userId,
     this.profile,
   });
+  @override
+  String toString() {
+    return 'OTPVerifyResult(success: $success, userExists: $userExists, message: $message, userId: $userId, profile: $profile)';
+  }
 }
