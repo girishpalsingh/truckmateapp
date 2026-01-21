@@ -1,82 +1,18 @@
-export const prompts: Record<string, string> = {
-    "bol": `You are an expert document analyst specializing in trucking logistics. Analyze the provided Bill of Lading and extract shipper info, consignee info, cargo details, and any exceptions noted.`,
+// Specific prompts for extracting data from different document types
+import rate_con from "./prompts/rate_con.ts";
+import bol from "./prompts/bol.ts";
+import fuel_receipt from "./prompts/fuel_receipt.ts";
+import lumper_receipt from "./prompts/lumper_receipt.ts";
+import scale_ticket from "./prompts/scale_ticket.ts";
+import odometer from "./prompts/odometer.ts";
+import other from "./prompts/other.ts";
 
-    "detention_evidence": `Analyze this documentation for detention claim evidence. Extract arrival time, departure time, location, and any supporting details.`,
-
-    "fuel_receipt": `You are an expert document analyst for trucking expenses. Extract vendor name, amount, gallons, jurisdiction state, and date from this fuel receipt. This is critical for IFTA reporting.`,
-
-    "lumper_receipt": `Extract the lumper fee amount, vendor name, date, and location from this lumper receipt.`,
-
-    "other": `Analyze this document and extract all visible text and key information.`,
-
-    "rate_con": `You are a legal consultant for truckers. Your job is to protect drivers from predatory Freight Broker contracts and also simplify the rate confirmation for truckers. Along with it you create get all fields from rate confirmation and validate them. 
-Once the legal analysis is done, you create a JSON object with all the data fields, notification and the danger clauses analysis.
-
-You must follow the following principles:
-* Only return valid JSON object
-* Never include backtick symbols in the JSON object
-
-
-### STEP 1: Parse and analyze the Rate Confirmation
-Parse the document and extract all the visible fields from the rate confirmation. Analyze the text of a Rate Confirmation and extract "Dangerous Clauses and Extract EVERYTHING from this rate confirmation.
-    Required fields:
-    - broker_name, broker_mc_number, load_id, 
-    -carrier_name, carrier_mc_number
-    - pickup_address, pickup_date, pickup_time
-    - delivery_address, delivery_date, delivery_time
-    - rate_amount, commodity, weitght, 
-    - detention_limit, detention_amount_per_hour
-    - fine_amount, fine_description,
-    - other fields
-    
-    
-    Also extract ALL other visible fields (contacts, notes, instructions, etc).
-    After extracting, validate the data.
-    Analyze the text of a Rate Confirmation and extract "Dangerous Clauses"
-
-### STEP 2: CALCULATE DANGER LIGHT
--- Sort all the clauses in descending order of preceived danger 
--- Assign red, yellow or green based on the danger
--- List all the clauses 
-
-## STEP 3: Notification
--- Notification object should allow a computer program to set notifications on reading the notification object so that trucker does not miss the important events like information beofre detetention, daily calls.
--- create a list of all notifications and associate them with danger events.
-
-### STEP 4: OUTPUT FORMAT (JSON ONLY)
-
-{ {all fields from rate confirmation}
-
-  "overall_traffic_light": "RED" | "YELLOW" | "GREEN",
-  "bad_clauses_found": [
-    {
-      "clause_type": "Payment" | "Detention" | "Labor" | "Fines" | "Other" | "Unknown" | "Damage",
-      "traffic_light": "RED" | "YELLOW" | "GREEN",
-      "danger_simple_language": "[Simple English explanation]",
-      "danger_simple_punjabi": "[Simple Punjabi explanation]",
-      "original_text": "[Quote the bad clause text from the image]",
-      "warning_en": "[Simple English explanation]",
-      "warning_pa": "[Simple Punjabi explanation]",
-      "notification":{
-        - "title": A concise (max 50 chars) header for the push notification.
-- "description": The full detail of what must be done.
-
-- "trigger_type": One of ["Absolute", "Relative", "Conditional"].
-   - "Absolute": A specific fixed date exists in the text (e.g., "January 1st, 2024").
-   - "Relative": A duration based on an event (e.g., "30 minutes before detention start").
-   - "Conditional": Based on an if/then scenario (e.g., "If the delayed pickup, notify withn 10 minutes").
-- "deadline_iso": (Nullable) If a fixed date is found, format as "YYYY-MM-DD". If not, null.
-- "relative_minutes_offset": (Integer/Nullable) If the deadline is relative (e.g., "in 30 minutes"), output the integer 30. If not applicable, null.
-- "original_clause": The exact text excerpt from the document for verification.
-        
-        "notification_start_event":"Before Contract signature| Daily Check Call|Status| Detention Start"| "Delivery Delay"| "Delivery Done"|"Pickup Delay"| "Pickup Done"| "Other"}
-    }
-  ]
-}
-
- ###Step 5: Validate the JSON and return
- Validate the JSON object to ensure it is valid and return it.
-`,
-
-    "scale_ticket": `Extract the scale location, vehicle weight, date, and any overweight indicators from this scale ticket.`
+export const EXTRACTION_PROMPTS: Record<string, string> = {
+  rate_con,
+  bol,
+  fuel_receipt,
+  lumper_receipt,
+  scale_ticket,
+  odometer,
+  other,
 };

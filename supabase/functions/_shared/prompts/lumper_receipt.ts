@@ -1,0 +1,1 @@
+export default `Extract the lumper fee amount, vendor name, date, and location from this lumper receipt.`;

@@ -21,7 +21,8 @@ const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 
 
-import { prompts } from "./prompts.ts";
+import { EXTRACTION_PROMPTS as prompts } from "./prompts.ts";
+import { processRateCon } from "./rate-con-processor.ts";
 
 // Process image with Gemini
 function loadPrompt(documentType: string): string {
@@ -36,7 +37,7 @@ export async function processWithGemini(imageUrl: string, documentType: string, 
 }> {
     const prompt = loadPrompt(documentType);
 
-    console.log(`Using model: ${modelName}`);
+    console.log(`Using model: ${modelName} for document type: ${documentType}`);
 
     // Fetch image and convert to base64
     // Fix for local Docker development: replace localhost/127.0.0.1 with host.docker.internal
@@ -247,6 +248,19 @@ export async function processDocumentWithAI(
     // const { data: updatedDoc, error: updateError } = await supabase...
 
     if (updateError) throw updateError
+
+    // Post-Processing for Rate Confirmation
+    console.log(`Checking Rate Con Processing: Type=${documentType}, OrgId=${organizationId}`);
+    if (documentType === 'rate_con' && organizationId) {
+        try {
+            await processRateCon(documentId, extractedData, organizationId);
+        } catch (e) {
+            console.error("Error in processRateCon:", e);
+            // We don't fail the whole request if this optional step fails, or do we?
+            // Prompt says "now when the llm response after parsing rate con document comes then we fill this table"
+            // Best effort is safe.
+        }
+    }
 
     console.log("Gemini Raw Output:", rawText);
 

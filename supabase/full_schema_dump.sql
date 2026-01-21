@@ -596,6 +596,21 @@ CREATE TABLE IF NOT EXISTS "public"."loads" (
 ALTER TABLE "public"."loads" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."notifications" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "organization_id" "uuid" NOT NULL,
+    "user_id" "uuid",
+    "title" "text" NOT NULL,
+    "body" "text",
+    "data" "jsonb",
+    "is_read" boolean DEFAULT false NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "public"."notifications" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."organizations" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "name" "text" NOT NULL,
@@ -643,6 +658,44 @@ ALTER TABLE "public"."profiles" OWNER TO "postgres";
 
 COMMENT ON COLUMN "public"."profiles"."is_active" IS 'Whether the user account is active and can log in';
 
+
+
+CREATE TABLE IF NOT EXISTS "public"."rate_cons" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "organization_id" "uuid" NOT NULL,
+    "broker_name" "text",
+    "broker_mc_number" "text",
+    "load_id" "text",
+    "carrier_name" "text",
+    "carrier_mc_number" "text",
+    "pickup_address" "text",
+    "pickup_date" "date",
+    "pickup_time" time without time zone,
+    "delivery_address" "text",
+    "delivery_date" "date",
+    "delivery_time" time without time zone,
+    "rate_amount" numeric,
+    "commodity" "text",
+    "weight" numeric,
+    "detention_limit" numeric,
+    "detention_amount_per_hour" numeric,
+    "fine_amount" numeric,
+    "fine_description" "text",
+    "contacts" "jsonb",
+    "notes" "text",
+    "instructions" "text",
+    "parsed_text" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "rate_amount_raw" "text",
+    "weight_raw" "text",
+    "detention_limit_raw" "text",
+    "detention_amount_per_hour_raw" "text",
+    "fine_amount_raw" "text"
+);
+
+
+ALTER TABLE "public"."rate_cons" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."trips" (
@@ -738,6 +791,11 @@ ALTER TABLE ONLY "public"."loads"
 
 
 
+ALTER TABLE ONLY "public"."notifications"
+    ADD CONSTRAINT "notifications_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."organizations"
     ADD CONSTRAINT "organizations_pkey" PRIMARY KEY ("id");
 
@@ -750,6 +808,11 @@ ALTER TABLE ONLY "public"."profiles"
 
 ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."rate_cons"
+    ADD CONSTRAINT "rate_cons_pkey" PRIMARY KEY ("id");
 
 
 
@@ -1012,6 +1075,16 @@ ALTER TABLE ONLY "public"."loads"
 
 
 
+ALTER TABLE ONLY "public"."notifications"
+    ADD CONSTRAINT "notifications_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id");
+
+
+
+ALTER TABLE ONLY "public"."notifications"
+    ADD CONSTRAINT "notifications_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
+
+
+
 ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
 
@@ -1019,6 +1092,11 @@ ALTER TABLE ONLY "public"."profiles"
 
 ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."rate_cons"
+    ADD CONSTRAINT "rate_cons_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id");
 
 
 
@@ -1107,6 +1185,18 @@ CREATE POLICY "Users can create expenses" ON "public"."expenses" FOR INSERT TO "
 
 
 
+CREATE POLICY "Users can only access rate_cons for their organization" ON "public"."rate_cons" USING (("organization_id" IN ( SELECT "profiles"."organization_id"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"()))));
+
+
+
+CREATE POLICY "Users can update notifications for their organization" ON "public"."notifications" FOR UPDATE USING (("organization_id" IN ( SELECT "profiles"."organization_id"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"()))));
+
+
+
 CREATE POLICY "Users can update own documents" ON "public"."documents" FOR UPDATE TO "authenticated" USING ((("organization_id" = "public"."get_user_organization_id"()) AND (("trip_id" IN ( SELECT "trips"."id"
    FROM "public"."trips"
   WHERE ("trips"."driver_id" = "auth"."uid"()))) OR ("public"."get_user_role"() = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"])))));
@@ -1120,6 +1210,12 @@ CREATE POLICY "Users can update own expenses" ON "public"."expenses" FOR UPDATE 
 
 
 CREATE POLICY "Users can update own profile" ON "public"."profiles" FOR UPDATE TO "authenticated" USING (("id" = "auth"."uid"())) WITH CHECK (("id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "Users can view notifications for their organization" ON "public"."notifications" FOR SELECT USING (("organization_id" IN ( SELECT "profiles"."organization_id"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"()))));
 
 
 
@@ -1193,6 +1289,9 @@ ALTER TABLE "public"."invoices" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."loads" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."notifications" ENABLE ROW LEVEL SECURITY;
+
+
 CREATE POLICY "org_audit_read_policy" ON "public"."document_audit_log" FOR SELECT TO "authenticated" USING (("organization_id" = ( SELECT "profiles"."organization_id"
    FROM "public"."profiles"
   WHERE ("profiles"."id" = "auth"."uid"()))));
@@ -1203,6 +1302,9 @@ ALTER TABLE "public"."organizations" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."rate_cons" ENABLE ROW LEVEL SECURITY;
 
 
 CREATE POLICY "server_audit_insert_policy" ON "public"."document_audit_log" FOR INSERT TO "authenticated" WITH CHECK (false);
@@ -1218,6 +1320,10 @@ ALTER TABLE "public"."trucks" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
+
+
+
+
 
 
 
@@ -2564,6 +2670,12 @@ GRANT ALL ON TABLE "public"."loads" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."notifications" TO "anon";
+GRANT ALL ON TABLE "public"."notifications" TO "authenticated";
+GRANT ALL ON TABLE "public"."notifications" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."organizations" TO "anon";
 GRANT ALL ON TABLE "public"."organizations" TO "authenticated";
 GRANT ALL ON TABLE "public"."organizations" TO "service_role";
@@ -2573,6 +2685,12 @@ GRANT ALL ON TABLE "public"."organizations" TO "service_role";
 GRANT ALL ON TABLE "public"."profiles" TO "anon";
 GRANT ALL ON TABLE "public"."profiles" TO "authenticated";
 GRANT ALL ON TABLE "public"."profiles" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."rate_cons" TO "anon";
+GRANT ALL ON TABLE "public"."rate_cons" TO "authenticated";
+GRANT ALL ON TABLE "public"."rate_cons" TO "service_role";
 
 
 

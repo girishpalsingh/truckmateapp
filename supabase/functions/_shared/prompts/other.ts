@@ -1,0 +1,1 @@
+export default `Analyze this document and extract all visible text and key information.`;

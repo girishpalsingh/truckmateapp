@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../themes/app_theme.dart';
 import '../../services/trip_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'rate_con_review_screen.dart';
 
 /// Main Dashboard Screen - Action-oriented for drivers
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -17,11 +19,75 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Trip? _activeTrip;
   TripProfitability? _profitability;
   bool _isLoading = true;
+  RealtimeChannel? _notificationSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadActiveTrip();
+    _setupNotificationListener();
+  }
+
+  @override
+  void dispose() {
+    _notificationSubscription?.unsubscribe();
+    super.dispose();
+  }
+
+  void _setupNotificationListener() {
+    final supabase = Supabase.instance.client;
+    // Listen for INSERT on notifications table
+    _notificationSubscription = supabase
+        .channel('public:notifications')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'notifications',
+          callback: (payload) {
+            final newRecord = payload.newRecord;
+            if (newRecord['data'] != null &&
+                newRecord['data']['type'] == 'rate_con_review') {
+              // Trigger UI alert
+              if (mounted) {
+                _showRateConAlert(newRecord);
+              }
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  void _showRateConAlert(Map<String, dynamic> notification) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(notification['title'] ?? 'New Notification'),
+        content: Text(notification['body'] ??
+            'You have a new rate confirmation to review.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Later'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context); // Close dialog
+              final rateConId = notification['data']['rate_con_id'];
+              if (rateConId != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        RateConReviewScreen(rateConId: rateConId),
+                  ),
+                );
+              }
+            },
+            child: const Text('Review Now'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadActiveTrip() async {
