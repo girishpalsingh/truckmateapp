@@ -11,13 +11,14 @@ class DocumentService {
   /// Upload a document image to storage
   Future<String> uploadDocument({
     required String organizationId,
-    required String tripId,
+    String? tripId,
     required String documentType,
     required Uint8List imageBytes,
     required String fileName,
   }) async {
+    final folder = (tripId != null && tripId.isNotEmpty) ? tripId : 'general';
     final path =
-        '$organizationId/$tripId/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+        '$organizationId/$folder/${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
     await _client.storage.from('documents').uploadBinary(
           path,
@@ -31,27 +32,29 @@ class DocumentService {
   /// Create a document record
   Future<Document> createDocument({
     required String organizationId,
-    required String tripId,
+    String? tripId,
     String? loadId,
     required String type,
     required String imageUrl,
     String? localTextExtraction,
     int pageCount = 1,
   }) async {
-    final response = await _client
-        .from('documents')
-        .insert({
-          'organization_id': organizationId,
-          'trip_id': tripId,
-          'load_id': loadId,
-          'type': type,
-          'image_url': imageUrl,
-          'local_text_extraction': localTextExtraction,
-          'page_count': pageCount,
-          'status': 'pending_review',
-        })
-        .select()
-        .single();
+    final Map<String, dynamic> data = {
+      'organization_id': organizationId,
+      'load_id': loadId,
+      'type': type,
+      'image_url': imageUrl,
+      'local_text_extraction': localTextExtraction,
+      'page_count': pageCount,
+      'status': 'pending_review',
+    };
+
+    if (tripId != null && tripId.isNotEmpty) {
+      data['trip_id'] = tripId;
+    }
+
+    final response =
+        await _client.from('documents').insert(data).select().single();
 
     return Document.fromJson(response);
   }

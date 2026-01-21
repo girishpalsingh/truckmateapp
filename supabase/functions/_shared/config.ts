@@ -20,5 +20,13 @@ export const config = {
     resend: {
         api_key: Deno.env.get("RESEND_API_KEY") ?? appConfig.resend.api_key,
         from_email: Deno.env.get("RESEND_FROM_EMAIL") ?? appConfig.resend.from_email,
+    },
+    llm: {
+        gemini: {
+            api_key: Deno.env.get("GEMINI_API_KEY") ?? appConfig.llm.gemini.api_key,
+            model: appConfig.llm.gemini.model,
+        }
     }
 };
+
+console.log("LLM Config:", config.llm);

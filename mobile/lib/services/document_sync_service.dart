@@ -234,9 +234,10 @@ class DocumentSyncService {
         }
       }
 
-      final tripId = doc.tripId ?? '00000000-0000-0000-0000-000000000000';
+      final tripId = doc.tripId;
+      final folder = (tripId != null && tripId.isNotEmpty) ? tripId : 'general';
       final remotePath =
-          '$orgId/$tripId/${DateTime.now().millisecondsSinceEpoch}_${doc.id}${_getExtension(doc.localPath)}';
+          '$orgId/$folder/${DateTime.now().millisecondsSinceEpoch}_${doc.id}${_getExtension(doc.localPath)}';
 
       _log('☁️ Uploading to Supabase Storage...');
       _log('   Path: $remotePath');
@@ -257,17 +258,23 @@ class DocumentSyncService {
 
       // Create document record in database
       _log('📝 Creating document record in database...');
+
+      final Map<String, dynamic> insertData = {
+        'organization_id': orgId,
+        'load_id': doc.loadId,
+        'type': doc.documentType,
+        'image_url': remotePath,
+        'page_count': 1,
+        'status': 'pending_review',
+      };
+
+      if (tripId != null && tripId.isNotEmpty) {
+        insertData['trip_id'] = tripId;
+      }
+
       final dbResponse = await _supabase
           .from('documents')
-          .insert({
-            'organization_id': orgId,
-            'trip_id': tripId,
-            'load_id': doc.loadId,
-            'type': doc.documentType,
-            'image_url': remotePath,
-            'page_count': 1,
-            'status': 'pending_review',
-          })
+          .insert(insertData)
           .select()
           .single();
 

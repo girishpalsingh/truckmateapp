@@ -617,16 +617,31 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _uploadedPdf = null;
-                  _uploadedPdfName = null;
-                  _uploadedPdfBytes = null;
-                });
-              },
-              child:
-                  const Text('Remove PDF', style: TextStyle(color: Colors.red)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _uploadedPdf = null;
+                      _uploadedPdfName = null;
+                      _uploadedPdfBytes = null;
+                    });
+                  },
+                  child:
+                      const Text('Remove', style: TextStyle(color: Colors.red)),
+                ),
+                const SizedBox(width: 16),
+                ElevatedButton.icon(
+                  onPressed: _saveDocument,
+                  icon: const Icon(Icons.send),
+                  label: const Text('Send'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -792,20 +807,15 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
             ),
 
           // Done / Save
-          IconButton(
-            onPressed: (_capturedPages.isEmpty &&
-                    _uploadedPdf == null &&
-                    _uploadedPdfBytes == null)
-                ? null
-                : _saveDocument,
-            icon: const Icon(Icons.check_circle),
-            iconSize: 32,
-            color: (_capturedPages.isEmpty &&
-                    _uploadedPdf == null &&
-                    _uploadedPdfBytes == null)
-                ? Colors.grey
-                : AppTheme.successColor,
-          ),
+          // Done / Save - Only show if not a PDF (PDF has its own send button)
+          if (_uploadedPdf == null && _uploadedPdfBytes == null)
+            IconButton(
+              onPressed: _capturedPages.isEmpty ? null : _saveDocument,
+              icon: const Icon(Icons.check_circle),
+              iconSize: 32,
+              color:
+                  _capturedPages.isEmpty ? Colors.grey : AppTheme.successColor,
+            ),
         ],
       ),
     );

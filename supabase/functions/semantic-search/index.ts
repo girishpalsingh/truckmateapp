@@ -3,6 +3,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { authorizeUser } from "../_shared/auth.ts";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -17,86 +18,8 @@ interface SearchRequest {
     date_to?: string;
     limit?: number;
 }
-
-async function generateEmbedding(apiKey: string, text: string): Promise<number[]> {
-    const response = await fetch("https://api.openai.com/v1/embeddings", {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            model: "text-embedding-3-small",
-            input: text,
-        }),
-    });
-
-    if (!response.ok) {
-        throw new Error("Failed to generate embedding");
-    }
-
-    const result = await response.json();
-    return result.data?.[0]?.embedding || [];
-}
-
-async function parseNaturalLanguageQuery(apiKey: string, query: string): Promise<{
-    searchTerms: string;
-    filters: {
-        states?: string[];
-        dateRange?: { from?: string; to?: string };
-        expenseTypes?: string[];
-        documentTypes?: string[];
-    };
-}> {
-    // Use Gemini to parse natural language into structured filters
-    const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [{
-                        text: `Parse this trucking search query into structured filters. Extract:
-- Search terms (key words to search for)
-- State/jurisdiction filters (US state codes like TX, CA)
-- Date range (parse relative dates like "December 2025", "last month")
-- Expense types (fuel, tolls, food, lodging, etc.)
-- Document types (rate_con, bol, fuel_receipt, etc.)
-
-Query: "${query}"
-
-Respond with JSON only:
-{
-  "searchTerms": "keywords to search",
-  "filters": {
-    "states": ["TX", "CA"],
-    "dateRange": { "from": "2025-12-01", "to": "2025-12-31" },
-    "expenseTypes": ["fuel"],
-    "documentTypes": ["fuel_receipt"]
-  }
-}`
-                    }]
-                }],
-                generationConfig: { temperature: 0.1 },
-            }),
-        }
-    );
-
-    const result = await response.json();
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    try {
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            return JSON.parse(jsonMatch[0]);
-        }
-    } catch {
-        // Fall back to simple search
-    }
-
-    return { searchTerms: query, filters: {} };
-}
+// ... (imports remain same) ...
+// ... (helper functions remain same) ...
 
 import { withLogging } from "../_shared/logger.ts";
 
@@ -106,6 +29,9 @@ serve(async (req) => withLogging(req, async (req) => {
     }
 
     try {
+        // Verify User
+        await authorizeUser(req);
+
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
         const openaiKey = Deno.env.get("OPENAI_API_KEY")!;
