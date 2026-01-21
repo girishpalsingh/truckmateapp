@@ -14,6 +14,7 @@ import 'presentation/screens/dashboard_screen.dart';
 import 'presentation/screens/trip_screens.dart';
 import 'presentation/screens/document_scanner_screen.dart';
 import 'presentation/screens/expense_screen.dart';
+import 'presentation/screens/pending_documents_screen.dart';
 
 void main() async {
   // Catch Flutter framework errors
@@ -90,6 +91,7 @@ class TruckMateApp extends StatelessWidget {
         '/trip/active': (context) => const ActiveTripScreen(),
         '/scan': (context) => const DocumentScannerScreen(),
         '/expense': (context) => const ExpenseScreen(),
+        '/documents': (context) => const PendingDocumentsScreen(),
       },
     );
   }

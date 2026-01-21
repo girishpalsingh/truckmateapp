@@ -1,7 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/auth_service.dart';
 import '../../config/app_config.dart';
+import '../../core/utils/user_utils.dart';
 import 'auth_state.dart';
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
@@ -15,23 +16,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
       : _authService = authService ?? AuthService(),
         super(const AuthState());
 
-  /// Checks for an existing session in SharedPreferences.
+  /// Checks for an existing session using UserUtils.
   Future<void> checkSession() async {
     // Artificial delay for welcome screen animation/splash effect
     await Future.delayed(const Duration(seconds: 2));
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
-      final userId = prefs.getString('user_id');
+      // Use centralized utility to check login status
+      final isLoggedIn = await UserUtils.isLoggedIn();
 
-      if (isLoggedIn && userId != null) {
-        // Ideally we would also load the profile from prefs or fetch it
+      if (isLoggedIn) {
+        // Load user identity from persistence
+        final identity = await UserUtils.getCurrentUserIdentity();
+        debugPrint('👤 Session restored for user: ${identity?.userId}');
         state = state.copyWith(status: AuthStatus.authenticated);
       } else {
         state = state.copyWith(status: AuthStatus.unauthenticated);
       }
     } catch (e) {
+      debugPrint('❌ Failed to restore session: $e');
       state = state.copyWith(
         status: AuthStatus.unauthenticated,
         errorMessage: 'Failed to restore session',
@@ -76,20 +79,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
     );
 
     if (result.success) {
-      print("result successful of login" + result.toString());
-      // Persist session
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('is_logged_in', true);
-      await prefs.setString(
-          'user_id', result.profile?.id ?? result.userId ?? 'unknown');
-      await prefs.setString('user_phone', phoneNumber);
+      debugPrint('✅ OTP verification successful: $result');
 
-      if (result.profile != null) {
-        await prefs.setString('user_name', result.profile!.fullName);
-        if (result.profile!.organizationId != null) {
-          await prefs.setString(
-              'organization_id', result.profile!.organizationId!);
-        }
+      // Use centralized utility to save user identity to persistence
+      final userId = result.profile?.id ?? result.userId;
+      if (userId != null && userId != 'unknown') {
+        await UserUtils.saveUserIdentity(
+          userId: userId,
+          organizationId: result.profile?.organizationId,
+          phoneNumber: phoneNumber,
+          userName: result.profile?.fullName,
+        );
+      } else {
+        debugPrint('⚠️ No valid user ID received from OTP verification');
       }
 
       state = state.copyWith(
@@ -112,16 +114,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
     );
   }
 
+  /// Sign out the user and clear all data
+  /// Uses centralized UserUtils.clearAllUserData() to ensure complete cleanup
   Future<void> signOut() async {
+    debugPrint('🚪 Signing out user...');
+
+    // Sign out from auth service (clears Supabase session)
     await _authService.signOut();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
 
-    // We might want to keep some prefs like theme mode?
-    // For now, clearing all is what was implied, but safer to just clear auth keys.
-    // However, existing code didn't specify, so let's stick to simple clear or just specific keys.
-    // Re-reading login logic: it sets specific keys. Let's just update state for now.
+    // Clear all user data using centralized utility
+    // This clears: SharedPreferences, pending sync queue, and local document storage
+    await UserUtils.clearAllUserData();
 
-    state = const AuthState(status: AuthStatus.unauthenticated);
+    // Reset state to unauthenticated with otpSent=false
+    // This ensures the login screen shows phone number input, not OTP verification
+    state = const AuthState(
+      status: AuthStatus.unauthenticated,
+      otpSent: false,
+    );
+
+    debugPrint('✅ Sign out complete');
   }
 }

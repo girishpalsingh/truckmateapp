@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../providers/auth_provider.dart';
 import '../themes/app_theme.dart';
 import '../../services/trip_service.dart';
 
@@ -65,14 +65,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
 
     if (confirm == true) {
-      // Clear session from SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('is_logged_in');
-      await prefs.remove('user_id');
-      await prefs.remove('user_phone');
-      await prefs.remove('user_name');
-      await prefs.remove('organization_id');
-      print('[Dashboard] Session cleared, logging out');
+      // Use authProvider to properly sign out (clears Supabase session AND SharedPreferences)
+      await ref.read(authProvider.notifier).signOut();
+      print('[Dashboard] Session cleared via authProvider, logging out');
 
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/login');
@@ -220,6 +215,22 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 0,
+        onTap: (index) {
+          switch (index) {
+            case 0:
+              // Already on home
+              break;
+            case 1:
+              Navigator.pushNamed(context, '/trips');
+              break;
+            case 2:
+              Navigator.pushNamed(context, '/documents');
+              break;
+            case 3:
+              Navigator.pushNamed(context, '/profile');
+              break;
+          }
+        },
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.route), label: 'Trips'),

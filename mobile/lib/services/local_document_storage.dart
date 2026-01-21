@@ -185,6 +185,36 @@ class LocalDocumentStorage {
     return '.pdf'; // Default to PDF
   }
 
+  /// Delete a single document from local storage
+  Future<bool> deleteDocument(String localPath) async {
+    try {
+      if (kIsWeb || localPath.startsWith('web://')) {
+        final fileName = localPath.replaceFirst('web://', '');
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('$_webDocumentsKey:$fileName');
+
+        // Update the documents list
+        final docsList = prefs.getStringList(_webDocumentsListKey) ?? [];
+        docsList.remove(fileName);
+        await prefs.setStringList(_webDocumentsListKey, docsList);
+
+        debugPrint('🗑️ [Web] Document deleted: $fileName');
+        return true;
+      } else {
+        final file = File(localPath);
+        if (await file.exists()) {
+          await file.delete();
+          debugPrint('🗑️ Document deleted: $localPath');
+          return true;
+        }
+        return false;
+      }
+    } catch (e) {
+      debugPrint('❌ Error deleting document: $e');
+      return false;
+    }
+  }
+
   /// Clear all cached documents (for testing/debugging)
   Future<void> clearCache() async {
     if (kIsWeb) {

@@ -23,23 +23,12 @@ class DocumentSyncService {
   StreamSubscription<ConnectivityResult>? _connectivitySubscription;
   bool _isSyncing = false;
 
-  // Cached user organization ID
-  String? _userOrganizationId;
-
   // Stream controller for sync status updates
   final _statusController = StreamController<PendingDocument>.broadcast();
   Stream<PendingDocument> get statusUpdates => _statusController.stream;
 
   DocumentSyncService({SupabaseClient? supabase})
       : _supabase = supabase ?? Supabase.instance.client;
-
-  /// Get the current user's organization ID from their profile
-  Future<String?> _getUserOrganization() async {
-    if (_userOrganizationId != null) return _userOrganizationId;
-
-    _userOrganizationId = await UserUtils.getUserOrganization();
-    return _userOrganizationId;
-  }
 
   /// Initialize sync service and start listening for connectivity
   Future<void> initialize() async {
@@ -140,9 +129,39 @@ class DocumentSyncService {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = prefs.getStringList(_pendingDocsKey) ?? [];
 
-    return jsonList
-        .map((json) => PendingDocument.fromJson(jsonDecode(json)))
-        .toList();
+    final validDocs = <PendingDocument>[];
+    final validJsonList = <String>[];
+    bool hasInvalidEntries = false;
+
+    for (final json in jsonList) {
+      try {
+        final doc = PendingDocument.fromJson(jsonDecode(json));
+
+        // Check if local file still exists (for pending documents)
+        if (doc.syncStatus == DocumentSyncStatus.pending ||
+            doc.syncStatus == DocumentSyncStatus.failed) {
+          final exists = await _localStorage.existsLocally(doc.localPath);
+          if (!exists) {
+            _log('⚠️ Removing orphaned document entry: ${doc.id}');
+            hasInvalidEntries = true;
+            continue;
+          }
+        }
+
+        validDocs.add(doc);
+        validJsonList.add(json);
+      } catch (e) {
+        _log('⚠️ Skipping malformed document entry: $e');
+        hasInvalidEntries = true;
+      }
+    }
+
+    // Update stored list if we found invalid entries
+    if (hasInvalidEntries) {
+      await prefs.setStringList(_pendingDocsKey, validJsonList);
+    }
+
+    return validDocs;
   }
 
   /// Sync all pending documents
@@ -208,19 +227,25 @@ class DocumentSyncService {
       // Get organization ID from document or user profile
       String? orgId = doc.organizationId;
       if (orgId == null || orgId.isEmpty) {
-        orgId = await _getUserOrganization();
+        orgId = await UserUtils.getUserOrganization();
         if (orgId == null) {
           throw Exception(
               'User has no organization assigned. Cannot upload document.');
         }
       }
 
-      final tripId = doc.tripId ?? 'unassigned';
+      final tripId = doc.tripId ?? '00000000-0000-0000-0000-000000000000';
       final remotePath =
           '$orgId/$tripId/${DateTime.now().millisecondsSinceEpoch}_${doc.id}${_getExtension(doc.localPath)}';
 
       _log('☁️ Uploading to Supabase Storage...');
       _log('   Path: $remotePath');
+      _log('   Org ID (from client): $orgId');
+
+      // Debug: Log current Supabase auth user
+      final currentUser = _supabase.auth.currentUser;
+      _log('   Auth User ID: ${currentUser?.id}');
+      _log('   Auth User Phone: ${currentUser?.phone}');
 
       await _supabase.storage.from('documents').uploadBinary(
             remotePath,
@@ -404,5 +429,57 @@ class DocumentSyncService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_pendingDocsKey);
     debugPrint('🗑️ Pending queue cleared');
+  }
+
+  /// Delete a single document from the queue and local storage
+  Future<bool> deleteSingleDocument(String id) async {
+    return deleteDocuments([id]);
+  }
+
+  /// Delete multiple documents from the queue and local storage
+  Future<bool> deleteDocuments(List<String> ids) async {
+    if (ids.isEmpty) return true;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonList = prefs.getStringList(_pendingDocsKey) ?? [];
+
+      final docsToDelete = <PendingDocument>[];
+      final remainingDocs = <String>[];
+
+      for (final json in jsonList) {
+        try {
+          final doc = PendingDocument.fromJson(jsonDecode(json));
+          if (ids.contains(doc.id)) {
+            docsToDelete.add(doc);
+          } else {
+            remainingDocs.add(json);
+          }
+        } catch (e) {
+          _log('⚠️ Skipping malformed document entry: $e');
+          // Don't add malformed entries to remainingDocs
+        }
+      }
+
+      // Update the queue first so UI can refresh immediately
+      await prefs.setStringList(_pendingDocsKey, remainingDocs);
+      _log('🗑️ Removed ${docsToDelete.length} documents from queue');
+
+      // Delete local files (best effort - don't fail if file doesn't exist)
+      for (final doc in docsToDelete) {
+        try {
+          await _localStorage.deleteDocument(doc.localPath);
+          _log('🗑️ Deleted local file: ${doc.localPath}');
+        } catch (e) {
+          _log('⚠️ Could not delete local file ${doc.localPath}: $e');
+          // Continue with other deletions
+        }
+      }
+
+      return true;
+    } catch (e) {
+      _log('❌ Failed to delete documents: $e');
+      return false;
+    }
   }
 }

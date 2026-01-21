@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../themes/app_theme.dart';
 import '../../services/expense_service.dart';
+import '../../core/utils/user_utils.dart';
 
 class ExpenseScreen extends StatefulWidget {
   const ExpenseScreen({super.key});
@@ -44,8 +45,23 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // Get organization ID from persistence using centralized utility
+      final organizationId = await UserUtils.getUserOrganization();
+      if (organizationId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No organization found. Please log in again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          setState(() => _isLoading = false);
+        }
+        return;
+      }
+
       await ExpenseService().createExpense(
-        organizationId: '11111111-1111-1111-1111-111111111111',
+        organizationId: organizationId,
         category: _category,
         amount: double.parse(_amountController.text),
         vendorName: _vendorController.text,

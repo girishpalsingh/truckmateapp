@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../themes/app_theme.dart';
 import '../../services/trip_service.dart';
+import '../../core/utils/user_utils.dart';
 
 /// New Trip Screen
 class NewTripScreen extends ConsumerStatefulWidget {
@@ -32,8 +33,23 @@ class _NewTripScreenState extends ConsumerState<NewTripScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // Get organization ID from persistence using centralized utility
+      final organizationId = await UserUtils.getUserOrganization();
+      if (organizationId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No organization found. Please log in again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          setState(() => _isLoading = false);
+        }
+        return;
+      }
+
       await _tripService.createTrip(
-        organizationId: '11111111-1111-1111-1111-111111111111',
+        organizationId: organizationId,
         originAddress: _originController.text,
         destinationAddress: _destinationController.text,
         odometerStart: int.parse(_odometerController.text),

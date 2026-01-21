@@ -76,7 +76,7 @@ async function handleSendOtp(
   const { error } = await supabase.auth.signInWithOtp({
     phone: phoneNumber,
     options: {
-      should_create_user: false,
+      shouldCreateUser: false,
     }
   });
 
