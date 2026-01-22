@@ -55,7 +55,10 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
     try {
       state = state.copyWith(isLoading: true);
       final notifications = await _service.fetchNotifications();
-      state = state.copyWith(notifications: notifications, isLoading: false);
+      // Limit to 10
+      final limitedNotifications = notifications.take(10).toList();
+      state =
+          state.copyWith(notifications: limitedNotifications, isLoading: false);
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
     }
@@ -125,8 +128,14 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
             // For now, let's assume the backend/RLS prevented connection or we just filter by user match logic.
 
             final notification = AppNotification.fromJson(newRecord);
+            // Add new and limit to 10
+            final currentList = [notification, ...state.notifications];
+            if (currentList.length > 10) {
+              currentList.removeRange(10, currentList.length);
+            }
+
             state = state.copyWith(
-              notifications: [notification, ...state.notifications],
+              notifications: currentList,
               latestNotification: notification, // Set this to trigger listeners
             );
           },

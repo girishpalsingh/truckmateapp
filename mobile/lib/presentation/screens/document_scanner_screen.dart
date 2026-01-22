@@ -945,12 +945,36 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
                         : const Icon(
                             Icons.camera,
                             color: Colors.white,
-                            size: 28,
+                            size: 32,
                           ),
                   ),
                 ),
               ),
             ),
+
+          // Send Button (only if pages exist)
+          if (_capturedPages.isNotEmpty)
+            SizedBox(
+              width: 80, // Approximate width to balance layout
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    onPressed: _saveDocument,
+                    icon: const Icon(Icons.send),
+                    iconSize: 32,
+                    color: Colors.green, // "green button" as requested
+                  ),
+                  const Text('Send',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green)),
+                ],
+              ),
+            )
+          else
+            const SizedBox(width: 48), // Spacer to balance layout
 
           // Done / Save
           // Done / Save - Only show if not a PDF (PDF has its own send button)
