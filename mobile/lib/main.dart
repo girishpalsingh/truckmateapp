@@ -15,6 +15,9 @@ import 'presentation/screens/trip_screens.dart';
 import 'presentation/screens/document_scanner_screen.dart';
 import 'presentation/screens/expense_screen.dart';
 import 'presentation/screens/pending_documents_screen.dart';
+import 'services/push_notification_service.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart'; // Uncomment after running 'flutterfire configure'
 
 void main() async {
   // Catch Flutter framework errors
@@ -50,6 +53,21 @@ void main() async {
       anonKey: config.supabase.anonKey,
     );
     print('✅ Supabase initialized');
+
+    // Initialize Firebase
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      print('✅ Firebase initialized');
+
+      // Initialize Push Notifications
+      await PushNotificationService().initialize();
+    } catch (e) {
+      print(
+          '⚠️ Firebase initialization failed (expected if config missing): $e');
+    }
+    // print('ℹ️ Firebase skipped (Run `flutterfire configure` to enable)');
 
     // Initialize PowerSync for offline support
     // await PowerSyncService.initialize();

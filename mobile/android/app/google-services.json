@@ -1,0 +1,49 @@
+{
+  "project_info": {
+    "project_number": "804258523004",
+    "firebase_url": "https://drmtm-79897.firebaseio.com",
+    "project_id": "drmtm-79897",
+    "storage_bucket": "drmtm-79897.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:804258523004:android:6660fa9d216d801d",
+        "android_client_info": {
+          "package_name": "com.github.axet.callrecorder"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA9F7d2ilbx89Z0W4UsXud77V6kpnrAlC4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:804258523004:android:449b5d60181de42f2266f9",
+        "android_client_info": {
+          "package_name": "com.truckmate.truck_mate_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA9F7d2ilbx89Z0W4UsXud77V6kpnrAlC4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

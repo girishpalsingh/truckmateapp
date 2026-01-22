@@ -140,8 +140,9 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
   Future<void> _pickFile() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+        type: FileType
+            .any, // changed from custom to any to ensure all file types are visible
+        // allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'], // ignored when type is any
         allowMultiple:
             kIsWeb, // Allow multiple only on web for now if needed, or stick to single for PDF
       );
@@ -213,8 +214,147 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
       }
     } catch (e) {
       debugPrint('🔴 Pick file error: $e');
+      debugPrint('🔴 Pick file error: $e');
       _showMessage('Failed to pick file: $e');
     }
+  }
+
+  Future<void> _pickFromGallery() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      // Pick multiple images
+      final List<XFile> images = await picker.pickMultiImage();
+
+      if (images.isEmpty) return;
+
+      // Clear previous if any PDF was there
+      setState(() {
+        _uploadedPdf = null;
+        _uploadedPdfName = null;
+        _uploadedPdfBytes = null;
+      });
+
+      int addedCount = 0;
+      for (final image in images) {
+        if (_capturedPages.length < _maxPages) {
+          // Text extraction (optional per image, maybe slow for many)
+          // We can do it lazy or just extract for the first one for now
+          // Or extract all in parallel? Let's process valid ones.
+
+          // To be responsive, we add them first, then extract text?
+          // Existing logic extracts before adding. Let's keep consistency but maybe show loading.
+
+          // For now, let's just add them. Text extraction is triggered on "Scan" usually?
+          // Wait, existing logic:
+          /*
+            final text = await _extractTextFromImage(image.path);
+            _capturedPages.add(image);
+            */
+
+          // If picking multiple, extracting text for all might freeze UI.
+          // Let's add them to pages. The text extraction in this flow is mostly for debug or auto-fill values.
+          // We can do it effectively.
+
+          setState(() {
+            _capturedPages.add(image);
+          });
+          addedCount++;
+        }
+      }
+
+      if (addedCount > 0) {
+        // Try extracting text from the first one as a sample for auto-detection
+        final firstText = await _extractTextFromImage(images.first.path);
+        setState(() {
+          _extractedText = firstText;
+        });
+        _showMessage('Added $addedCount image(s) from Gallery');
+      }
+    } catch (e) {
+      debugPrint('🔴 Pick gallery error: $e');
+      _showMessage('Failed to pick images: $e');
+    }
+  }
+
+  void _showUploadOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const DualLanguageText(
+              primaryText: 'Select Source',
+              subtitleText: 'ਸਰੋਤ ਚੁਣੋ',
+              primaryStyle:
+                  TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              alignment: CrossAxisAlignment.center,
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildOptionBtn(
+                  icon: Icons.photo_library,
+                  label: 'Gallery',
+                  subLabel: 'ਗੈਲਰੀ',
+                  color: Colors.purple,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickFromGallery();
+                  },
+                ),
+                _buildOptionBtn(
+                  icon: Icons.folder_open,
+                  label: 'Files',
+                  subLabel: 'ਫਾਈਲਾਂ',
+                  color: Colors.orange,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickFile();
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOptionBtn({
+    required IconData icon,
+    required String label,
+    required String subLabel,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 32, color: color),
+          ),
+          const SizedBox(height: 8),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(subLabel,
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+        ],
+      ),
+    );
   }
 
   Future<String?> _extractTextFromImage(String imagePath) async {
@@ -767,7 +907,13 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
         children: [
           // File Upload (Gallery/Files)
           IconButton(
-            onPressed: _pickFile,
+            onPressed: () {
+              if (kIsWeb) {
+                _pickFile(); // Web uses standard picker
+              } else {
+                _showUploadOptions();
+              }
+            },
             icon: const Icon(
                 Icons.upload_file), // Changed icon to represent generic upload
             iconSize: 32,

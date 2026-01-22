@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../themes/app_theme.dart';
 import '../../services/trip_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'rate_con_review_screen.dart';
+import 'notification_screen.dart';
+import '../providers/notification_provider.dart';
+import '../widgets/notification_toast.dart';
 
 /// Main Dashboard Screen - Action-oriented for drivers
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -19,76 +20,30 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Trip? _activeTrip;
   TripProfitability? _profitability;
   bool _isLoading = true;
-  RealtimeChannel? _notificationSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadActiveTrip();
-    _setupNotificationListener();
+    // Initialize notification listener via provider
+    // We defer slightly to ensure context is ready
+    Future.microtask(() {
+      ref.read(notificationProvider.notifier); // Just reading instantiates it
+    });
   }
 
-  @override
-  void dispose() {
-    _notificationSubscription?.unsubscribe();
-    super.dispose();
-  }
-
-  void _setupNotificationListener() {
-    final supabase = Supabase.instance.client;
-    // Listen for INSERT on notifications table
-    _notificationSubscription = supabase
-        .channel('public:notifications')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'notifications',
-          callback: (payload) {
-            final newRecord = payload.newRecord;
-            if (newRecord['data'] != null &&
-                newRecord['data']['type'] == 'rate_con_review') {
-              // Trigger UI alert
-              if (mounted) {
-                _showRateConAlert(newRecord);
-              }
-            }
-          },
-        )
-        .subscribe();
-  }
-
-  void _showRateConAlert(Map<String, dynamic> notification) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(notification['title'] ?? 'New Notification'),
-        content: Text(notification['body'] ??
-            'You have a new rate confirmation to review.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Later'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              final rateConId = notification['data']['rate_con_id'];
-              if (rateConId != null) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        RateConReviewScreen(rateConId: rateConId),
-                  ),
-                );
-              }
-            },
-            child: const Text('Review Now'),
-          ),
-        ],
-      ),
-    );
-  }
+  // NOTE: Original direct Supabase listener removed.
+  // The global NotificationProvider now handles listening and state updates.
+  // We can listen to state changes here if we want to show a toast/dialog,
+  // or just rely on the badge and occasional check.
+  // For the requested functionality: "bell icon with notification list and unread badge",
+  // the badge is UI state, the list is the screen.
+  // The "showDialog" behavior might still be desired?
+  // User asked "bell icon with list... will supabase broadcast to all users?"
+  // Let's keep the alert dialog logic but drive it from the provider state change?
+  // Actually, UI alerts might be annoying if notification center exists.
+  // Let's assume the Badge is primary, but we'll keep a listener for NEW urgent items if needed later.
+  // For now, removing the direct subscription avoids duplicate logic.
 
   Future<void> _loadActiveTrip() async {
     try {
@@ -131,7 +86,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
 
     if (confirm == true) {
-      // Use authProvider to properly sign out (clears Supabase session AND SharedPreferences)
       await ref.read(authProvider.notifier).signOut();
       print('[Dashboard] Session cleared via authProvider, logging out');
 
@@ -143,6 +97,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch notifications for badge count
+    final notificationState = ref.watch(notificationProvider);
+    final unreadCount = notificationState.unreadCount;
+
+    // Listen for NEW notifications to show Toast
+    ref.listen(notificationProvider, (previous, next) {
+      if (previous?.latestNotification != next.latestNotification &&
+          next.latestNotification != null) {
+        _showNotificationToast(next.latestNotification!);
+      }
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: const DualLanguageText(
@@ -157,6 +123,46 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           alignment: CrossAxisAlignment.center,
         ),
         actions: [
+          // Notification Bell
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => const NotificationScreen()),
+                  );
+                },
+              ),
+              if (unreadCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      '$unreadCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
@@ -576,5 +582,51 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ),
       ),
     );
+  }
+
+  void _showNotificationToast(dynamic notification) {
+    late OverlayEntry overlayEntry;
+
+    // Auto-dismiss timer
+    Future.delayed(const Duration(seconds: 15), () {
+      if (overlayEntry.mounted) {
+        overlayEntry.remove();
+      }
+    });
+
+    overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).padding.top + 10,
+        left: 0,
+        right: 0,
+        child: Material(
+          color: Colors.transparent,
+          child: NotificationToast(
+            title: notification.title ?? 'New Notification',
+            body: notification.body ?? 'You have a new update.',
+            onViewTap: () {
+              overlayEntry.remove();
+              // Navigate based on type
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const NotificationScreen()),
+              );
+              // Optionally go deeper if data present (e.g. rate con)
+              if (notification.data != null &&
+                  notification.data['type'] == 'rate_con_review') {
+                // We could go directly to RateConReviewScreen if we had the ID context easily
+                // But NotificationScreen handles that routing logic too.
+              }
+            },
+            onDismiss: () {
+              overlayEntry.remove();
+            },
+          ),
+        ),
+      ),
+    );
+
+    Overlay.of(context).insert(overlayEntry);
   }
 }
