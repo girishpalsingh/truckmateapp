@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../providers/notification_provider.dart';
 import '../../data/models/app_notification.dart';
-import 'rate_con_review_screen.dart';
+import 'rate_con_analysis_screen.dart';
 
 class NotificationScreen extends ConsumerStatefulWidget {
   const NotificationScreen({super.key});
@@ -37,7 +37,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => RateConReviewScreen(rateConId: rateConId),
+              builder: (context) => RateConAnalysisScreen(rateConId: rateConId),
             ),
           );
         }

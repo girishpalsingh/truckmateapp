@@ -24,6 +24,7 @@ class RateCon {
   final String? notes;
   final String? instructions;
   final String status; // 'under_review', 'processing', 'approved'
+  final String? overallTrafficLight; // 'RED', 'YELLOW', 'GREEN'
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -52,6 +53,7 @@ class RateCon {
     this.notes,
     this.instructions,
     required this.status,
+    this.overallTrafficLight,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -96,6 +98,7 @@ class RateCon {
       notes: json['notes'],
       instructions: json['instructions'],
       status: json['status'] ?? 'under_review',
+      overallTrafficLight: json['overall_traffic_light'],
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
     );
@@ -127,6 +130,7 @@ class RateCon {
       'notes': notes,
       'instructions': instructions,
       'status': status,
+      'overall_traffic_light': overallTrafficLight,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };

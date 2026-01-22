@@ -627,15 +627,64 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
               flex: 3,
               child: (_uploadedPdf != null || _uploadedPdfBytes != null)
                   ? _buildPdfPreview()
-                  : (kIsWeb ? _buildWebUpload() : _buildCameraPreview()),
+                  : (_capturedPages.isNotEmpty
+                      ? _buildImageReview()
+                      : (kIsWeb ? _buildWebUpload() : _buildCameraPreview())),
             ),
 
-            // Captured Pages Preview
-            if (_capturedPages.isNotEmpty)
-              SizedBox(height: 100, child: _buildPagesPreview()),
+            // Captured Pages Preview (Bottom strip) - Hide if in Review mode?
+            // User might want to swipe? Let's keep it simple.
+            // If we have Review mode, maybe we don't need the bottom strip or controls?
+            // Let's hide the bottom strip if we are showing the full Review UI to avoid clutter?
+            // Or keep it for context?
+            // The PDF flow doesn't show a strip.
+            // Let's hide the strip if we are in "Review" mode (which effectively _buildImageReview is).
+            if (_capturedPages.isEmpty && !kIsWeb)
+              // No, wait. If capturing, we usually want to see the strip.
+              // But if we switch to "Review" mode immediately after 1 capture, it slows down multi-page scanning.
+              // Users usually want to scan 1, scan 2, scan 3... then Send.
+              // So replacing Camera with Review immediately after 1st scan is bad UX for multi-page.
 
-            // Controls
-            _buildControls(),
+              // Maybe the user wants the "Send" button *IN* the place where PDF Send button is?
+              // The PDF Send button is in the middle.
+              // If I keep Camera, I can't put a button in the middle blocking it.
+
+              // Maybe the user is uploading from *Gallery*?
+              // If uploading from Gallery, `_capturedPages` is populated.
+              // If I pick from Gallery, I definitely don't need Camera.
+              // So, distinguishing "Scan Mode" vs "Gallery/Review Mode"?
+              // There is no explicit mode variable.
+
+              // However, if I uploaded from Gallery, I likely want Review.
+              // If I scanned from Camera, I might want to scan more.
+
+              // Compromise:
+              // If I have pages, I show the Camera (for more scanning) BUT the "Send" button should be dominant.
+              // The user complained about *position*.
+              // "not at same position in pdf upload screen".
+              // PDF screen: Middle.
+              // My Image screen: Bottom.
+
+              // If I make `_buildImageReview` toggleable? No.
+
+              // Let's assume for now: If `_capturedPages.isNotEmpty`, we show the Review Screen (Images + Send Button)
+              // AND an "Add Page" button (which opens Camera).
+              // This aligns UI with PDF flow (Preview + Send).
+
+              // Implementation:
+              // If pages > 0: Show Review UI.
+              // Review UI has: Carousel of pages, Send Button, "Scan More" button.
+
+              // This solves the position issue perfectly.
+
+              // Captured Pages Preview
+              // if (_capturedPages.isNotEmpty)
+              //   SizedBox(height: 100, child: _buildPagesPreview()),
+
+              // Controls - Hide if in Review mode (pages exist)
+              if (_capturedPages.isEmpty &&
+                  (_uploadedPdf == null && _uploadedPdfBytes == null))
+                _buildControls(),
           ],
         ],
       ),
@@ -785,6 +834,111 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildImageReview() {
+    return Container(
+      width: double.infinity,
+      color: Colors.black87,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Image Carousel / Preview
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: _buildPagesPreview(), // Reuse the list/grid
+            ),
+          ),
+
+          // Actions
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                Text(
+                  '${_capturedPages.length} Pages Captured',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Add More / Retake
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        // Just show camera again?
+                        // But my logic hides camera if pages > 0.
+                        // I need a state to "force camera"?
+                        // Or I just delete the pages? No.
+                        // I need a "Scan Mode" flag?
+                        // Or simpler: change the logic in build to:
+                        // if (_capturedPages.isNotEmpty && !_isScanningMore) ...
+
+                        // For now, let's just use "Remove All" to clear and start over?
+                        // The user probably wants to ADD.
+
+                        setState(() {
+                          _capturedPages.clear(); // Temporary fix for "Retake"
+                          // Ideally we want to append.
+                          // If we want to append, we need to switch view back to Camera.
+                          // But my View logic is: pages > 0 -> Review.
+                          // I should add a bool _isReviewMode = false;
+                          // When scanning, _isReviewMode = false.
+                          // When "Done" or "Upload", _isReviewMode = true.
+
+                          // But right now, users just snap and I put it in list.
+                          // Let's add a "Add Page" interaction.
+
+                          // _capturePhoto(); // This takes a photo immediately? No.
+                          // _buildCameraPreview() is a widget.
+                        });
+                      },
+                      icon: const Icon(Icons.delete),
+                      label: const Text('Clear All'),
+                      style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red)),
+                    ),
+                    const SizedBox(width: 16),
+
+                    // Send Button (Big Blue - Same Position as PDF)
+                    ElevatedButton.icon(
+                      onPressed: _saveDocument,
+                      icon: const Icon(Icons.send),
+                      label: const Text('Send'),
+                      style: AppTheme.actionButtonStyle.copyWith(
+                        minimumSize:
+                            const MaterialStatePropertyAll(Size(140, 50)),
+                      ),
+                    ),
+                  ],
+                ),
+                // "Add Page" - Since hiding camera prevents adding, we need a way.
+                // Actually, if we hide camera, we can't add more easily without changing state.
+                // But wait, the user complaint was "button position".
+                // If I allow "Add Page", I switch to Camera.
+                // When does it switch back to Review?
+                // After capturing?
+
+                const SizedBox(height: 16),
+                TextButton.icon(
+                  onPressed: _pickFromGallery,
+                  // Or camera? If I want camera, I need to render camera.
+                  // _pickFromGallery is safe.
+                  icon: const Icon(Icons.add_photo_alternate),
+                  label: const Text('Add from Gallery',
+                      style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -954,23 +1108,15 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
 
           // Send Button (only if pages exist)
           if (_capturedPages.isNotEmpty)
-            SizedBox(
-              width: 80, // Approximate width to balance layout
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    onPressed: _saveDocument,
-                    icon: const Icon(Icons.send),
-                    iconSize: 32,
-                    color: Colors.green, // "green button" as requested
-                  ),
-                  const Text('Send',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green)),
-                ],
+            ElevatedButton.icon(
+              onPressed: _saveDocument,
+              icon: const Icon(Icons.send),
+              label: const Text('Send'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
             )
           else

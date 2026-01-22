@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/models/rate_con_model.dart';
+import '../data/models/rate_con_clause.dart';
 
 class RateConService {
   final SupabaseClient _client;
@@ -25,5 +26,14 @@ class RateConService {
       'updated_at': DateTime.now().toIso8601String(),
     };
     await _client.from('rate_cons').update(updates).eq('id', id);
+  }
+
+  Future<List<RateConClause>> getClauses(String rateConId) async {
+    final response = await _client
+        .from('rate_con_clauses')
+        .select()
+        .eq('rate_con_id', rateConId);
+
+    return (response as List).map((e) => RateConClause.fromJson(e)).toList();
   }
 }

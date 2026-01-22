@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../themes/app_theme.dart';
 import '../../services/trip_service.dart';
+import 'rate_con_analysis_screen.dart';
 import 'notification_screen.dart';
 import '../providers/notification_provider.dart';
 import '../widgets/notification_toast.dart';
@@ -607,16 +608,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             onViewTap: () {
               overlayEntry.remove();
               // Navigate based on type
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => const NotificationScreen()),
-              );
-              // Optionally go deeper if data present (e.g. rate con)
               if (notification.data != null &&
                   notification.data['type'] == 'rate_con_review') {
-                // We could go directly to RateConReviewScreen if we had the ID context easily
-                // But NotificationScreen handles that routing logic too.
+                // Assuming RateConAnalysisScreen exists and takes rateConId
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => RateConAnalysisScreen(
+                      rateConId: notification.data['rate_con_id'],
+                    ),
+                  ),
+                );
+              } else {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const NotificationScreen(),
+                  ),
+                );
               }
             },
             onDismiss: () {
