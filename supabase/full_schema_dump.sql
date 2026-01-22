@@ -127,6 +127,16 @@ CREATE TYPE "public"."load_status" AS ENUM (
 ALTER TYPE "public"."load_status" OWNER TO "postgres";
 
 
+CREATE TYPE "public"."rate_con_status" AS ENUM (
+    'under_review',
+    'processing',
+    'approved'
+);
+
+
+ALTER TYPE "public"."rate_con_status" OWNER TO "supabase_admin";
+
+
 CREATE TYPE "public"."trip_status" AS ENUM (
     'deadhead',
     'active',
@@ -493,11 +503,17 @@ CREATE TABLE IF NOT EXISTS "public"."documents" (
     "reviewed_by" "uuid",
     "reviewed_at" timestamp with time zone,
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "uploaded_by" "uuid",
+    "title" "text"
 );
 
 
 ALTER TABLE "public"."documents" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."documents"."title" IS 'Title of document';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."expenses" (
@@ -649,7 +665,8 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "preferred_language" "text" DEFAULT 'en'::"text",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
-    "is_active" boolean DEFAULT true NOT NULL
+    "is_active" boolean DEFAULT true NOT NULL,
+    "fcm_token" "text"
 );
 
 
@@ -658,6 +675,32 @@ ALTER TABLE "public"."profiles" OWNER TO "postgres";
 
 COMMENT ON COLUMN "public"."profiles"."is_active" IS 'Whether the user account is active and can log in';
 
+
+
+CREATE TABLE IF NOT EXISTS "public"."rate_con_clauses" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "rate_con_id" "uuid" NOT NULL,
+    "clause_type" "text",
+    "traffic_light" "text",
+    "clause_title" "text",
+    "clause_title_punjabi" "text",
+    "danger_simple_language" "text",
+    "danger_simple_punjabi" "text",
+    "original_text" "text",
+    "warning_en" "text",
+    "warning_pa" "text",
+    "notification_data" "jsonb",
+    "notification_title" "text",
+    "notification_description" "text",
+    "notification_trigger_type" "text",
+    "notification_deadline" "date",
+    "notification_relative_offset" integer,
+    "notification_start_event" "text",
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."rate_con_clauses" OWNER TO "supabase_admin";
 
 
 CREATE TABLE IF NOT EXISTS "public"."rate_cons" (
@@ -691,7 +734,9 @@ CREATE TABLE IF NOT EXISTS "public"."rate_cons" (
     "weight_raw" "text",
     "detention_limit_raw" "text",
     "detention_amount_per_hour_raw" "text",
-    "fine_amount_raw" "text"
+    "fine_amount_raw" "text",
+    "status" "public"."rate_con_status" DEFAULT 'under_review'::"public"."rate_con_status" NOT NULL,
+    "overall_traffic_light" "text"
 );
 
 
@@ -808,6 +853,11 @@ ALTER TABLE ONLY "public"."profiles"
 
 ALTER TABLE ONLY "public"."profiles"
     ADD CONSTRAINT "profiles_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."rate_con_clauses"
+    ADD CONSTRAINT "rate_con_clauses_pkey" PRIMARY KEY ("id");
 
 
 
@@ -1030,6 +1080,11 @@ ALTER TABLE ONLY "public"."documents"
 
 
 
+ALTER TABLE ONLY "public"."documents"
+    ADD CONSTRAINT "documents_uploaded_by_fkey" FOREIGN KEY ("uploaded_by") REFERENCES "auth"."users"("id");
+
+
+
 ALTER TABLE ONLY "public"."expenses"
     ADD CONSTRAINT "expenses_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
 
@@ -1095,6 +1150,11 @@ ALTER TABLE ONLY "public"."profiles"
 
 
 
+ALTER TABLE ONLY "public"."rate_con_clauses"
+    ADD CONSTRAINT "rate_con_clauses_rate_con_id_fkey" FOREIGN KEY ("rate_con_id") REFERENCES "public"."rate_cons"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."rate_cons"
     ADD CONSTRAINT "rate_cons_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id");
 
@@ -1130,6 +1190,10 @@ CREATE POLICY "Drivers can manage own trips" ON "public"."trips" TO "authenticat
 
 
 CREATE POLICY "Drivers can update load status" ON "public"."loads" FOR UPDATE TO "authenticated" USING ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = 'driver'::"public"."user_role"))) WITH CHECK ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = 'driver'::"public"."user_role")));
+
+
+
+CREATE POLICY "Enable all access for authenticated users" ON "public"."rate_con_clauses" TO "authenticated" USING (true) WITH CHECK (true);
 
 
 
@@ -1213,9 +1277,9 @@ CREATE POLICY "Users can update own profile" ON "public"."profiles" FOR UPDATE T
 
 
 
-CREATE POLICY "Users can view notifications for their organization" ON "public"."notifications" FOR SELECT USING (("organization_id" IN ( SELECT "profiles"."organization_id"
+CREATE POLICY "Users can view notifications for their organization" ON "public"."notifications" FOR SELECT USING ((("organization_id" IN ( SELECT "profiles"."organization_id"
    FROM "public"."profiles"
-  WHERE ("profiles"."id" = "auth"."uid"()))));
+  WHERE ("profiles"."id" = "auth"."uid"()))) AND (("user_id" IS NULL) OR ("user_id" = "auth"."uid"()))));
 
 
 
@@ -1304,6 +1368,9 @@ ALTER TABLE "public"."organizations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."rate_con_clauses" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."rate_cons" ENABLE ROW LEVEL SECURITY;
 
 
@@ -1323,6 +1390,14 @@ ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
 
 
 
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."notifications";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."rate_cons";
 
 
 
@@ -2685,6 +2760,13 @@ GRANT ALL ON TABLE "public"."organizations" TO "service_role";
 GRANT ALL ON TABLE "public"."profiles" TO "anon";
 GRANT ALL ON TABLE "public"."profiles" TO "authenticated";
 GRANT ALL ON TABLE "public"."profiles" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."rate_con_clauses" TO "postgres";
+GRANT ALL ON TABLE "public"."rate_con_clauses" TO "anon";
+GRANT ALL ON TABLE "public"."rate_con_clauses" TO "authenticated";
+GRANT ALL ON TABLE "public"."rate_con_clauses" TO "service_role";
 
 
 

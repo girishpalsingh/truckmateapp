@@ -363,7 +363,7 @@ class _DocumentTileState extends State<_DocumentTile> {
                     ),
                   ),
                   child: Text(
-                    doc.documentTypeDisplay,
+                    doc.title ?? doc.documentTypeDisplay,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,

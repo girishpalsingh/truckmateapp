@@ -61,22 +61,52 @@ class RateConClausesScreen extends StatelessWidget {
       ),
       child: ExpansionTile(
         leading: Icon(icon, color: color, size: 32),
-        title: Text(
-          clause.dangerSimpleLanguage ?? 'Unknown Clause',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        subtitle: clause.dangerSimplePunjabi != null
-            ? Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  clause.dangerSimplePunjabi!,
-                  style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Clause Type Badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              margin: const EdgeInsets.only(bottom: 4),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: color.withOpacity(0.3)),
+              ),
+              child: Text(
+                clause.clauseType?.toUpperCase() ?? 'UNKNOWN',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
                 ),
-              )
-            : null,
+              ),
+            ),
+            // Title
+            DualLanguageText(
+              primaryText:
+                  clause.clauseTitle ?? clause.dangerSimpleLanguage ?? 'Clause',
+              subtitleText: clause.clauseTitlePunjabi,
+              primaryStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: DualLanguageText(
+            primaryText: clause.dangerSimpleLanguage ?? '',
+            subtitleText: clause.dangerSimplePunjabi,
+            primaryStyle: TextStyle(
+              color: Colors.grey.shade800,
+              fontSize: 14,
+            ),
+          ),
+        ),
         childrenPadding: const EdgeInsets.all(16),
         children: [
-          _buildDetailRow('Type', clause.clauseType ?? 'Unknown'),
           if (clause.originalText != null) ...[
             const SizedBox(height: 12),
             const Text(
@@ -88,6 +118,7 @@ class RateConClausesScreen extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Container(
+              width: double.infinity,
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: Colors.grey.shade100,

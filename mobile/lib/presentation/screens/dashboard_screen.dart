@@ -5,6 +5,7 @@ import '../themes/app_theme.dart';
 import '../../services/trip_service.dart';
 import 'rate_con_analysis_screen.dart';
 import 'notification_screen.dart';
+import '../../services/notification_service.dart';
 import '../providers/notification_provider.dart';
 import '../widgets/notification_toast.dart';
 
@@ -607,9 +608,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             body: notification.body ?? 'You have a new update.',
             onViewTap: () {
               overlayEntry.remove();
+              // Mark as read if ID is available
+              if (notification.data['id'] != null) {
+                // Use the provider notifier to update state + backend
+                ref
+                    .read(notificationProvider.notifier)
+                    .markAsRead(notification.data['id']);
+              }
+
               // Navigate based on type
-              if (notification.data != null &&
-                  notification.data['type'] == 'rate_con_review') {
+              if (notification.data['type'] == 'rate_con_review') {
                 // Assuming RateConAnalysisScreen exists and takes rateConId
                 Navigator.push(
                   context,

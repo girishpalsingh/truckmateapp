@@ -95,65 +95,63 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
             const Spacer(),
 
             // Action 1: View Clauses
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  // Fetch clauses and navigate
-                  try {
-                    final clauses = await _service.getClauses(widget.rateConId);
-                    if (!mounted) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            RateConClausesScreen(clauses: clauses),
-                      ),
-                    );
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to load clauses: $e')));
-                  }
-                },
-                icon: const Icon(Icons.list_alt),
-                label: const DualLanguageText(
-                  primaryText: 'View Clauses',
-                  subtitleText: 'ਸ਼ਰਤਾਂ ਦੇਖੋ',
-                  primaryStyle:
-                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  alignment: CrossAxisAlignment.center,
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: color, // Theme the button with status
-                  foregroundColor: Colors.white,
-                ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                // Fetch clauses and navigate
+                try {
+                  final clauses = await _service.getClauses(widget.rateConId);
+                  if (!mounted) return;
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          RateConClausesScreen(clauses: clauses),
+                    ),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to load clauses: $e')));
+                }
+              },
+              icon: const Icon(Icons.list_alt),
+              label: const DualLanguageText(
+                primaryText: 'View Clauses',
+                subtitleText: 'ਸ਼ਰਤਾਂ ਦੇਖੋ',
+                primaryStyle:
+                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                alignment: CrossAxisAlignment.center,
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color, // Theme the button with status
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 80),
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
             const SizedBox(height: 16),
 
             // Action 2: Review Information
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          RateConReviewScreen(rateConId: widget.rateConId),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.edit_document),
-                label: const DualLanguageText(
-                  primaryText: 'Review Information',
-                  subtitleText: 'ਜਾਣਕਾਰੀ ਦੀ ਸਮੀਖਿਆ ਕਰੋ',
-                  primaryStyle:
-                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  alignment: CrossAxisAlignment.center,
-                ),
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        RateConReviewScreen(rateConId: widget.rateConId),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.edit_document),
+              label: const DualLanguageText(
+                primaryText: 'Review Information',
+                subtitleText: 'ਜਾਣਕਾਰੀ ਦੀ ਸਮੀਖਿਆ ਕਰੋ',
+                primaryStyle:
+                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                alignment: CrossAxisAlignment.center,
+              ),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 80),
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
             const SizedBox(height: 48),

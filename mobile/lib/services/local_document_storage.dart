@@ -83,7 +83,8 @@ class LocalDocumentStorage {
     // Cleanup old files beyond cache limit
     await _cleanupOldFiles();
 
-    return filePath;
+    // Return only the filename to ensure persistence across iOS sandbox rotations
+    return fileName;
   }
 
   /// Get document bytes from local storage
@@ -107,7 +108,7 @@ class LocalDocumentStorage {
   }
 
   Future<Uint8List?> _getDocumentBytesMobile(String localPath) async {
-    final file = File(localPath);
+    final file = await _resolveLocalFile(localPath);
     if (await file.exists()) {
       return await file.readAsBytes();
     }
@@ -118,7 +119,7 @@ class LocalDocumentStorage {
   Future<File?> getLocalDocument(String localPath) async {
     if (kIsWeb) return null;
 
-    final file = File(localPath);
+    final file = await _resolveLocalFile(localPath);
     if (await file.exists()) {
       return file;
     }
@@ -132,8 +133,27 @@ class LocalDocumentStorage {
       final prefs = await SharedPreferences.getInstance();
       return prefs.containsKey('$_webDocumentsKey:$fileName');
     } else {
-      return await File(localPath).exists();
+      final file = await _resolveLocalFile(localPath);
+      return await file.exists();
     }
+  }
+
+  /// Helper to resolve absolute or relative paths
+  Future<File> _resolveLocalFile(String path) async {
+    // If it's already an absolute path and exists, use it (for backward compatibility)
+    if (path.startsWith('/') && await File(path).exists()) {
+      return File(path);
+    }
+
+    // Otherwise, assume it's a filename relative to our doc dir
+    // Or if it was an absolute path from a previous install (on iOS), extract filename
+    String fileName = path;
+    if (path.contains('/')) {
+      fileName = path.split('/').last;
+    }
+
+    final dir = await _documentsDir;
+    return File('${dir.path}/$fileName');
   }
 
   /// Get all locally cached documents (mobile only)

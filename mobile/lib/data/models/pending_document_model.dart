@@ -21,6 +21,7 @@ class PendingDocument extends Equatable {
   final DocumentSyncStatus syncStatus;
   final String? remoteUrl;
   final String? remoteDocumentId;
+  final String? title; // Added field
   final Map<String, dynamic>? llmResponse;
   final double? confidence;
   final List<dynamic>? dangerousClauses;
@@ -39,6 +40,7 @@ class PendingDocument extends Equatable {
     this.syncStatus = DocumentSyncStatus.pending,
     this.remoteUrl,
     this.remoteDocumentId,
+    this.title, // Added field
     this.llmResponse,
     this.confidence,
     this.dangerousClauses,
@@ -58,6 +60,7 @@ class PendingDocument extends Equatable {
     DocumentSyncStatus? syncStatus,
     String? remoteUrl,
     String? remoteDocumentId,
+    String? title, // Added field
     Map<String, dynamic>? llmResponse,
     double? confidence,
     List<dynamic>? dangerousClauses,
@@ -76,6 +79,7 @@ class PendingDocument extends Equatable {
       syncStatus: syncStatus ?? this.syncStatus,
       remoteUrl: remoteUrl ?? this.remoteUrl,
       remoteDocumentId: remoteDocumentId ?? this.remoteDocumentId,
+      title: title ?? this.title, // Added field
       llmResponse: llmResponse ?? this.llmResponse,
       confidence: confidence ?? this.confidence,
       dangerousClauses: dangerousClauses ?? this.dangerousClauses,
@@ -97,6 +101,7 @@ class PendingDocument extends Equatable {
       'sync_status': syncStatus.name,
       'remote_url': remoteUrl,
       'remote_document_id': remoteDocumentId,
+      'title': title, // Added field
       'llm_response': llmResponse,
       'confidence': confidence,
       'dangerous_clauses': dangerousClauses,
@@ -121,6 +126,7 @@ class PendingDocument extends Equatable {
       ),
       remoteUrl: json['remote_url'] as String?,
       remoteDocumentId: json['remote_document_id'] as String?,
+      title: json['title'] as String?, // Added field
       llmResponse: json['llm_response'] as Map<String, dynamic>?,
       confidence: (json['confidence'] as num?)?.toDouble(),
       dangerousClauses: json['dangerous_clauses'] as List<dynamic>?,

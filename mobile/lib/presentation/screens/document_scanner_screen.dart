@@ -1121,17 +1121,6 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
             )
           else
             const SizedBox(width: 48), // Spacer to balance layout
-
-          // Done / Save
-          // Done / Save - Only show if not a PDF (PDF has its own send button)
-          if (_uploadedPdf == null && _uploadedPdfBytes == null)
-            IconButton(
-              onPressed: _capturedPages.isEmpty ? null : _saveDocument,
-              icon: const Icon(Icons.check_circle),
-              iconSize: 32,
-              color:
-                  _capturedPages.isEmpty ? Colors.grey : AppTheme.successColor,
-            ),
         ],
       ),
     );

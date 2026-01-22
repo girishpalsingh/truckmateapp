@@ -1,4 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { NotificationService } from './notification-service.ts';
+import { parseNumeric, parseTime, parseDate } from './utils.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -6,7 +8,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 export async function processRateCon(
     documentId: string,
     extractedData: any, // JSON object from LLM
-    organizationId: string
+    organizationId: string,
+    userId?: string | null
 ) {
     console.log(`Processing Rate Con for Doc ID: ${documentId}, Org: ${organizationId}`);
 
@@ -16,19 +19,6 @@ export async function processRateCon(
     // Map extractedData fields to table columns
     // Note: LLM output keys might not match exactly, we should try to match flexibly or assume prompt exact match.
     // The prompt `rate_con.ts` defines specific fields. We'll map them.
-
-    // Helper to parser numeric values robustly
-    const parseNumeric = (val: any): number | null => {
-        if (val === null || val === undefined) return null;
-        if (typeof val === 'number') return val;
-        if (typeof val === 'string') {
-            // Remove all non-numeric characters except dot and minus
-            const clean = val.replace(/[^0-9.-]/g, '');
-            const parsed = parseFloat(clean);
-            return isNaN(parsed) ? null : parsed;
-        }
-        return null;
-    };
 
     const rateConData = {
         organization_id: organizationId,
@@ -41,12 +31,12 @@ export async function processRateCon(
         carrier_mc_number: extractedData.carrier_mc_number || null,
 
         pickup_address: extractedData.pickup_address || null,
-        pickup_date: extractedData.pickup_date || null,
-        pickup_time: extractedData.pickup_time || null,
+        pickup_date: parseDate(extractedData.pickup_date),
+        pickup_time: parseTime(extractedData.pickup_time),
 
         delivery_address: extractedData.delivery_address || null,
-        delivery_date: extractedData.delivery_date || null,
-        delivery_time: extractedData.delivery_time || null,
+        delivery_date: parseDate(extractedData.delivery_date),
+        delivery_time: parseTime(extractedData.delivery_time),
 
         rate_amount: parseNumeric(extractedData.rate_amount),
         rate_amount_raw: extractedData.rate_amount ? String(extractedData.rate_amount) : null,
@@ -67,6 +57,7 @@ export async function processRateCon(
         notes: extractedData.notes || null,
         instructions: extractedData.instructions || null,
         parsed_text: JSON.stringify(extractedData),
+        overall_traffic_light: extractedData.overall_traffic_light || 'UNKNOWN',
     };
 
     console.log("Inserting Rate Con Data:", JSON.stringify(rateConData));
@@ -79,44 +70,74 @@ export async function processRateCon(
 
     if (rateConError) {
         console.error("Error inserting rate_cons:", rateConError);
-        // We don't throw here to avoid failing the whole document process, but we log it.
-        // Or maybe we should throw to indicate failure? 
-        // Let's log and let the notification be about failure? 
-        // For now, let's throw so it bubbles up.
         throw new Error(`Failed to insert rate con data: ${rateConError.message}`);
     }
 
     console.log("Rate Con inserted:", rateCon.id);
 
-    // 2. Create Notification
-    // "If app is active then a screen comes in front of user... else we send a notification"
-    // Since we are in backend, we just create a notification. The mobile app will listen to INSERT on notifications table (Realtime).
-    // If the app is open, it gets the event and shows the screen.
-    // If closed, this table entry acts as the "unread notification" history.
-    // We can also trigger push notification here if we had FCM set up, but for now we rely on Supabase Realtime + Table.
+    // 1.1 Insert Bad Clauses
+    if (extractedData.bad_clauses_found && Array.isArray(extractedData.bad_clauses_found) && extractedData.bad_clauses_found.length > 0) {
+        console.log(`Inserting ${extractedData.bad_clauses_found.length} clauses...`);
 
-    const notificationPayload = {
-        organization_id: organizationId,
+        const clausesData = extractedData.bad_clauses_found.map((clause: any) => ({
+            rate_con_id: rateCon.id,
+            clause_type: clause.clause_type,
+            traffic_light: clause.traffic_light,
+            clause_title: clause.clause_title,
+            clause_title_punjabi: clause.clause_title_punjabi,
+            danger_simple_language: clause.danger_simple_language,
+            danger_simple_punjabi: clause.danger_simple_punjabi,
+            original_text: clause.original_text,
+            notification_data: clause.notification,
+
+            // Map explicit notification fields
+            notification_title: clause.notification?.title || null,
+            notification_description: clause.notification?.description || null,
+            notification_trigger_type: clause.notification?.trigger_type || null,
+            notification_deadline: parseDate(clause.notification?.deadline_iso), // Ensure valid date
+            notification_relative_offset: clause.notification?.relative_minutes_offset ? parseInt(String(clause.notification.relative_minutes_offset)) : null,
+            notification_start_event: clause.notification?.notification_start_event || null
+        }));
+
+        const { error: clausesError } = await supabase
+            .from('rate_con_clauses')
+            .insert(clausesData);
+
+        if (clausesError) {
+            console.error("Error inserting clauses:", clausesError);
+            // Non-fatal, but good to know
+        } else {
+            console.log("Clauses inserted successfully");
+        }
+    }
+
+    // 2. Create Notification using shared service
+    const notificationService = new NotificationService(supabase);
+
+    await notificationService.sendNotification({
+        userId: userId || undefined, // undefined falls back to org (or we might want explicit null handling in service)
+        // Actually based on my service logic: user_id: params.userId (can be null)
+        // If I pass null here, it goes as null to DB -> Global Org Notification
+        // If I want to restrict to JUST this user, I should ensure userId is passed.
+        // If userId is null (legacy/system upload?), maybe it SHOULD be org wide?
+        // Plan said: "Target notifications to the specific user".
+        // Implementation: RLS restricts org-wide view if user_id is null?
+        // My RLS: user_id IS NULL (Global) OR user_id = auth.uid()
+        // So if userId is null, everyone sees it.
+        // If userId is provided, ONLY that user sees it.
+        // Perfect.
+        organizationId: organizationId,
         title: "New Rate Confirmation",
         body: `Rate Con from ${rateConData.broker_name || 'Unknown Broker'} is ready for review.`,
         data: {
-            type: 'rate_con_review',
             rate_con_id: rateCon.id,
             document_id: documentId,
             traffic_light: extractedData.overall_traffic_light || 'UNKNOWN',
-        }
-    };
+        },
+        type: 'rate_con_review'
+    });
 
-    const { error: notifyError } = await supabase
-        .from('notifications')
-        .insert(notificationPayload);
-
-    if (notifyError) {
-        console.error("Error creating notification:", notifyError);
-        // Non-critical, so we don't throw
-    } else {
-        console.log("Notification created.");
-    }
+    console.log("Notification request sent.");
 
     return rateCon;
 }

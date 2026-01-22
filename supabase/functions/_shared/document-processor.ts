@@ -12,7 +12,6 @@ if (!GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY is not set");
 }
 
-console.log(`Initializing GoogleGenAI with API Key (length: ${GEMINI_API_KEY.length})`);
 
 const GEMINI_MODEL = config.llm.gemini.model;
 const GEMINI_EMBEDDING_MODEL = "text-embedding-004";
@@ -162,6 +161,20 @@ export async function processDocumentWithAI(
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+    // 1. Fetch document metadata (including uploaded_by)
+    const { data: docData, error: docError } = await supabase
+        .from('documents')
+        .select('uploaded_by, organization_id')
+        .eq('id', documentId)
+        .single();
+
+    if (docError) {
+        console.error(`Error fetching document ${documentId}:`, docError);
+    }
+
+    const userId = docData?.uploaded_by || null;
+    const effectiveOrgId = organizationId || docData?.organization_id;
+
     // Get organization's LLM preference
     let llmModel = GEMINI_MODEL
     console.log("Processing document with AI... using model: ", llmModel)
@@ -190,6 +203,11 @@ export async function processDocumentWithAI(
         // ai_processed_at: new Date().toISOString(), // This is updated_at in index.ts, keeping standard
         updated_at: new Date().toISOString(),
         status: confidence > 0.7 ? "pending_review" : "pending_review", // MATCHING INDEX.TS logic
+        title: (extractedData as any).broker_name
+            ? (extractedData as any).broker_name
+            : (extractedData as any).load_id
+                ? `Load ${(extractedData as any).load_id}`
+                : documentType.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) // Fallback to capitalized type
     }
 
     if (embedding.length === 768) {
@@ -250,10 +268,10 @@ export async function processDocumentWithAI(
     if (updateError) throw updateError
 
     // Post-Processing for Rate Confirmation
-    console.log(`Checking Rate Con Processing: Type=${documentType}, OrgId=${organizationId}`);
-    if (documentType === 'rate_con' && organizationId) {
+    console.log(`Checking Rate Con Processing: Type=${documentType}, OrgId=${effectiveOrgId}`);
+    if (documentType === 'rate_con' && effectiveOrgId) {
         try {
-            await processRateCon(documentId, extractedData, organizationId);
+            await processRateCon(documentId, extractedData, effectiveOrgId, userId);
         } catch (e) {
             console.error("Error in processRateCon:", e);
             // We don't fail the whole request if this optional step fails, or do we?

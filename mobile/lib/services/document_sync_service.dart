@@ -142,9 +142,10 @@ class DocumentSyncService {
             doc.syncStatus == DocumentSyncStatus.failed) {
           final exists = await _localStorage.existsLocally(doc.localPath);
           if (!exists) {
-            _log('⚠️ Removing orphaned document entry: ${doc.id}');
-            hasInvalidEntries = true;
-            continue;
+            _log(
+                '⚠️ Orphaned document detected: ${doc.id} (Path: ${doc.localPath}) - Keeping for safety');
+            // hasInvalidEntries = true; // DISABLED DELETION FOR DEBUGGING
+            // continue;
           }
         }
 
@@ -334,8 +335,10 @@ class DocumentSyncService {
       _log('🤖 Edge Function response status: ${response.status}');
 
       if (response.status == 200 && response.data != null) {
-        final extractedData =
-            response.data['extracted_data'] as Map<String, dynamic>?;
+        final extractedData = response.data['extractedData'] as Map<String,
+            dynamic>?; // Note: key is extractedData in processor return
+        final updatedDocData =
+            response.data['updatedDoc'] as Map<String, dynamic>?;
         final confidence = (response.data['confidence'] as num?)?.toDouble();
         final dangerousClauses =
             extractedData?['dangerous_clauses'] as List<dynamic>?;
@@ -345,6 +348,7 @@ class DocumentSyncService {
           llmResponse: extractedData,
           confidence: confidence,
           dangerousClauses: dangerousClauses,
+          title: updatedDocData?['title'],
         );
 
         _log('🤖 ✅ LLM processing complete!');

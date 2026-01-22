@@ -4,6 +4,12 @@ Once the legal analysis is done, you create a JSON object with all the data fiel
 You must follow the following principles:
 * Only return valid JSON object
 * Never include backtick symbols in the JSON object
+* Punjabi should be in Gurmukhi script not in latin script
+* Summary should be in simple language and easy to understand 
+* Give time in 24 hour format as HH:MM:SS, if it is not valid time  then dont put the field
+* Give date in YYYY-MM-DD format, if it is not valid date  then dont put the field
+
+
 
 
 ### STEP 1: Parse and analyze the Rate Confirmation
@@ -14,8 +20,11 @@ Parse the document and extract all the visible fields from the rate confirmation
     - pickup_address, pickup_date, pickup_time
     - delivery_address, delivery_date, delivery_time
     - rate_amount, commodity, weitght, 
-    - detention_limit, detention_amount_per_hour
+    - detention_limit in maximum hours , detention_amount_per_hour
     - fine_amount, fine_description,
+    - total_rate_amount
+    - contact_person_name, contact_person_phone, contact_person_email
+    - special_instructions
     - other fields
     
     
@@ -27,6 +36,16 @@ Parse the document and extract all the visible fields from the rate confirmation
 -- Sort all the clauses in descending order of preceived danger 
 -- Assign red, yellow or green based on the danger
 -- List all the clauses 
+-- Clauses which are fault of trucker like taking partial load or not sharing racking should be marked as green
+-- Clauses which are fault of driver like taking another load without permission should be marked as green 
+-- Clauses like failure to track should be marked as yellow as those are driver fault
+-- Clauses which are fault of broker should be marked as red
+-- Clauses which are fault of anyone can happen should be marked as yellow
+-- Clauses which impact detention payout should be marked as red
+-- High fee cut more than $100 should be marked as red
+-- Providing notification of events before event happens should be marked red
+-- Providing notification of events within 30 minutes of even happening should be marked yellow
+
 
 ## STEP 3: Notification
 -- Notification object should allow a computer program to set notifications on reading the notification object so that trucker does not miss the important events like information beofre detetention, daily calls.
@@ -41,11 +60,11 @@ Parse the document and extract all the visible fields from the rate confirmation
     {
       "clause_type": "Payment" | "Detention" | "Labor" | "Fines" | "Other" | "Unknown" | "Damage",
       "traffic_light": "RED" | "YELLOW" | "GREEN",
-      "danger_simple_language": "[Simple English explanation]",
-      "danger_simple_punjabi": "[Simple Punjabi explanation]",
+      "clause_title": "[Clause title in 3-4 words in English]",
+      "clause_title_punjabi": "[Clause title in 3-4 words in Punjabi]",
+      "danger_simple_language": "[Simple English explanation in less than 20 words]",
+      "danger_simple_punjabi": "[Simple Punjabi explanation in less than 20 words]",
       "original_text": "[Quote the bad clause text from the image]",
-      "warning_en": "[Simple English explanation]",
-      "warning_pa": "[Simple Punjabi explanation]",
       "notification":{
         - "title": A concise (max 50 chars) header for the push notification.
 - "description": The full detail of what must be done.
