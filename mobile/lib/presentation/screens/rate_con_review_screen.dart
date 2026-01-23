@@ -92,7 +92,10 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await _service.approveRateCon(widget.rateConId, _pendingEdits);
+      print('DEBUG: Calling approveRateCon...');
+      final newLoadId =
+          await _service.approveRateCon(widget.rateConId, _pendingEdits);
+      print('DEBUG: Rate Con Approved. New Load ID: $newLoadId');
 
       if (!mounted) return;
 
@@ -111,7 +114,7 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
             builder: (context) => CreateTripScreen(
               originAddress: pickupStop?.address,
               destinationAddress: deliveryStop?.address,
-              loadId: widget.rateConId,
+              loadId: newLoadId,
             ),
           ),
         );

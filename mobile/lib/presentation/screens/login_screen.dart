@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../themes/app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../providers/auth_state.dart';
+import '../../../l10n/app_localizations.dart';
 
 /// OTP Login Screen
 class LoginScreen extends ConsumerStatefulWidget {
@@ -109,9 +110,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: 16),
 
                 // Title
-                const DualLanguageText(
-                  primaryText: 'Welcome to TruckMate',
-                  subtitleText: 'ਟਰੱਕਮੇਟ ਵਿੱਚ ਜੀ ਆਇਆਂ ਨੂੰ',
+                DualLanguageText(
+                  primaryText: AppLocalizations.of(context)!.welcomeToApp,
+                  subtitleText:
+                      AppLocalizations.of(context)!.welcomeToAppSubtitle,
                   primaryStyle: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -138,9 +140,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           size: 20,
                         ),
                         const SizedBox(width: 8),
-                        const Text(
-                          'Development Mode - OTP: 123456',
-                          style: TextStyle(fontWeight: FontWeight.w500),
+                        Text(
+                          AppLocalizations.of(context)!.devModeOtp,
+                          style: const TextStyle(fontWeight: FontWeight.w500),
                         ),
                       ],
                     ),
@@ -148,7 +150,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                 // Phone Input
                 if (!authState.otpSent) ...[
-                  _buildLabel('Phone Number', 'ਫ਼ੋਨ ਨੰਬਰ'),
+                  _buildLabel(AppLocalizations.of(context)!.phoneNumber,
+                      AppLocalizations.of(context)!.phoneNumberSubtitle),
                   const SizedBox(height: 8),
                   TextField(
                     controller: _phoneController,
@@ -170,22 +173,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     style: AppTheme.actionButtonStyle,
                     child: authState.isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : const DualLanguageText(
-                            primaryText: 'Send OTP',
-                            subtitleText: 'OTP ਭੇਜੋ',
+                        : DualLanguageText(
+                            primaryText: AppLocalizations.of(context)!.sendOTP,
+                            subtitleText:
+                                AppLocalizations.of(context)!.sendOTPSubtitle,
                             alignment: CrossAxisAlignment.center,
-                            primaryStyle: TextStyle(
+                            primaryStyle: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w600),
-                            subtitleStyle:
-                                TextStyle(color: Colors.white70, fontSize: 11),
+                            subtitleStyle: const TextStyle(
+                                color: Colors.white70, fontSize: 11),
                           ),
                   ),
                 ],
 
                 // OTP Input
                 if (authState.otpSent) ...[
-                  _buildLabel('Enter OTP', 'OTP ਦਾਖਲ ਕਰੋ'),
+                  _buildLabel(AppLocalizations.of(context)!.enterOTP,
+                      AppLocalizations.of(context)!.enterOTPSubtitle),
                   const SizedBox(height: 8),
                   TextField(
                     controller: _otpController,
@@ -209,15 +214,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     style: AppTheme.actionButtonStyle,
                     child: authState.isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : const DualLanguageText(
-                            primaryText: 'Verify & Login',
-                            subtitleText: 'ਪੁਸ਼ਟੀ ਕਰੋ ਅਤੇ ਲੌਗਇਨ ਕਰੋ',
+                        : DualLanguageText(
+                            primaryText:
+                                AppLocalizations.of(context)!.verifyAndLogin,
+                            subtitleText: AppLocalizations.of(context)!
+                                .verifyAndLoginSubtitle,
                             alignment: CrossAxisAlignment.center,
-                            primaryStyle: TextStyle(
+                            primaryStyle: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w600),
-                            subtitleStyle:
-                                TextStyle(color: Colors.white70, fontSize: 11),
+                            subtitleStyle: const TextStyle(
+                                color: Colors.white70, fontSize: 11),
                           ),
                   ),
                   const SizedBox(height: 16),
@@ -226,9 +233,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ref.read(authProvider.notifier).changePhoneNumber();
                       _otpController.clear();
                     },
-                    child: const DualLanguageText(
-                      primaryText: 'Change Phone Number',
-                      subtitleText: 'ਫ਼ੋਨ ਨੰਬਰ ਬਦਲੋ',
+                    child: DualLanguageText(
+                      primaryText:
+                          AppLocalizations.of(context)!.changePhoneNumber,
+                      subtitleText: AppLocalizations.of(context)!
+                          .changePhoneNumberSubtitle,
                       alignment: CrossAxisAlignment.center,
                       primaryStyle: TextStyle(color: AppTheme.primaryColor),
                     ),

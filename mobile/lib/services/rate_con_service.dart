@@ -62,14 +62,15 @@ class RateConService {
     }).eq('id', id);
   }
 
-  /// Approve rate confirmation with optional edits
-  Future<void> approveRateCon(String id, Map<String, dynamic> edits) async {
-    final updates = {
-      ...edits,
-      'status': 'approved',
-      'updated_at': DateTime.now().toIso8601String(),
-    };
-    await _client.from('rate_confirmations').update(updates).eq('id', id);
+  /// Approve rate confirmation and create load. Returns the new Load ID.
+  Future<String> approveRateCon(String id, Map<String, dynamic> edits) async {
+    final response =
+        await _client.rpc('approve_rate_con_and_create_load', params: {
+      'rate_con_uuid': id,
+      'edits': edits,
+    });
+
+    return response as String;
   }
 
   /// Reject rate confirmation

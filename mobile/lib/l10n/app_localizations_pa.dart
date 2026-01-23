@@ -406,4 +406,100 @@ class AppLocalizationsPa extends AppLocalizations {
 
   @override
   String get invalidOTPSubtitle => 'ਗਲਤ OTP';
+
+  @override
+  String get logoutConfirmation => 'ਕੀ ਤੁਸੀਂ ਯਕੀਨਨ ਲੌਗ ਆਉਟ ਕਰਨਾ ਚਾਹੁੰਦੇ ਹੋ?';
+
+  @override
+  String get logoutConfirmationSubtitle =>
+      'ਕੀ ਤੁਸੀਂ ਯਕੀਨਨ ਲੌਗ ਆਉਟ ਕਰਨਾ ਚਾਹੁੰਦੇ ਹੋ?';
+
+  @override
+  String get viewTripDetails => 'ਯਾਤਰਾ ਦੇ ਵੇਰਵੇ ਵੇਖੋ';
+
+  @override
+  String get viewTripDetailsSubtitle => 'ਯਾਤਰਾ ਦੇ ਵੇਰਵੇ ਵੇਖੋ';
+
+  @override
+  String get startNewTripTracking =>
+      'ਟ੍ਰੈਕਿੰਗ ਸ਼ੁਰੂ ਕਰਨ ਲਈ ਨਵੀਂ ਯਾਤਰਾ ਸ਼ੁਰੂ ਕਰੋ';
+
+  @override
+  String get startNewTripTrackingSubtitle =>
+      'ਟ੍ਰੈਕਿੰਗ ਸ਼ੁਰੂ ਕਰਨ ਲਈ ਨਵੀਂ ਯਾਤਰਾ ਸ਼ੁਰੂ ਕਰੋ';
+
+  @override
+  String get quickActions => 'ਤੇਜ਼ ਕਾਰਵਾਈਆਂ';
+
+  @override
+  String get quickActionsSubtitle => 'ਤੇਜ਼ ਕਾਰਵਾਈਆਂ';
+
+  @override
+  String get scanDoc => 'ਦਸਤਾਵੇਜ਼ ਸਕੈਨ';
+
+  @override
+  String get scanDocSubtitle => 'ਦਸਤਾਵੇਜ਼ ਸਕੈਨ';
+
+  @override
+  String get addExpense => 'ਖਰਚਾ ਜੋੜੋ';
+
+  @override
+  String get addExpenseSubtitle => 'ਖਰਚਾ ਜੋੜੋ';
+
+  @override
+  String get voiceCommandsComingSoon => 'ਆਵਾਜ਼ ਕਮਾਂਡ ਜਲਦੀ ਆ ਰਹੇ ਹਨ!';
+
+  @override
+  String get voiceCommandsComingSoonSubtitle => 'ਆਵਾਜ਼ ਕਮਾਂਡ ਜਲਦੀ ਆ ਰਹੇ ਹਨ!';
+
+  @override
+  String get home => 'ਘਰ';
+
+  @override
+  String get homeSubtitle => 'ਘਰ';
+
+  @override
+  String get rate => 'ਦਰ';
+
+  @override
+  String get rateSubtitle => 'ਦਰ';
+
+  @override
+  String get unknown => 'ਅਣਜਾਣ';
+
+  @override
+  String get unknownSubtitle => 'ਅਣਜਾਣ';
+
+  @override
+  String get profit => 'ਮੁਨਾਫਾ';
+
+  @override
+  String get profitSubtitle => 'ਮੁਨਾਫਾ';
+
+  @override
+  String get welcomeToApp => 'ਟਰੱਕਮੇਟ ਵਿੱਚ ਜੀ ਆਇਆਂ ਨੂੰ';
+
+  @override
+  String get welcomeToAppSubtitle => 'ਟਰੱਕਮੇਟ ਵਿੱਚ ਜੀ ਆਇਆਂ ਨੂੰ';
+
+  @override
+  String get devModeOtp => 'ਡਿਵੈਲਪਮੈਂਟ ਮੋਡ - OTP: 123456';
+
+  @override
+  String get verifyAndLogin => 'ਪੁਸ਼ਟੀ ਕਰੋ ਅਤੇ ਲੌਗਇਨ ਕਰੋ';
+
+  @override
+  String get verifyAndLoginSubtitle => 'ਪੁਸ਼ਟੀ ਕਰੋ ਅਤੇ ਲੌਗਇਨ ਕਰੋ';
+
+  @override
+  String get changePhoneNumber => 'ਫ਼ੋਨ ਨੰਬਰ ਬਦਲੋ';
+
+  @override
+  String get changePhoneNumberSubtitle => 'ਫ਼ੋਨ ਨੰਬਰ ਬਦਲੋ';
+
+  @override
+  String get appTagline => 'ਛੋਟੇ ਕੈਰੀਅਰਾਂ ਲਈ ਟਰੱਕਿੰਗ ਪ੍ਰਬੰਧਨ';
+
+  @override
+  String get appTaglineSubtitle => 'ਛੋਟੇ ਕੈਰੀਅਰਾਂ ਲਈ ਟਰੱਕਿੰਗ ਪ੍ਰਬੰਧਨ';
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../providers/auth_state.dart';
 import '../themes/app_theme.dart';
+import '../../../l10n/app_localizations.dart';
 
 /// Welcome screen with TruckMate branding
 class WelcomeScreen extends ConsumerStatefulWidget {
@@ -125,40 +126,25 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
                   const SizedBox(height: 40),
 
                   // App Name
-                  const Text(
-                    'TruckMate',
-                    style: TextStyle(
+                  // App Name
+                  Text(
+                    AppLocalizations.of(context)!.appName,
+                    style: const TextStyle(
                       fontSize: 48,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                       letterSpacing: 2,
                     ),
                   ),
-                  const SizedBox(height: 8),
-
-                  // Punjabi subtitle
-                  Text(
-                    'ਟਰੱਕਮੇਟ',
-                    style: TextStyle(
-                      fontSize: 24,
-                      color: Colors.white.withOpacity(0.9),
-                    ),
-                  ),
                   const SizedBox(height: 16),
 
                   // Tagline
+                  // Tagline
                   Text(
-                    'Smart Trucking Management',
+                    AppLocalizations.of(context)!.appTagline,
                     style: TextStyle(
                       fontSize: 16,
                       color: Colors.white.withOpacity(0.8),
-                    ),
-                  ),
-                  Text(
-                    'ਸਮਾਰਟ ਟਰੱਕਿੰਗ ਮੈਨੇਜਮੈਂਟ',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withOpacity(0.7),
                     ),
                   ),
 

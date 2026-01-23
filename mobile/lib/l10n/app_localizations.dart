@@ -895,6 +895,192 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'ਗਲਤ OTP'**
   String get invalidOTPSubtitle;
+
+  /// No description provided for @logoutConfirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to logout?'**
+  String get logoutConfirmation;
+
+  /// No description provided for @logoutConfirmationSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਕੀ ਤੁਸੀਂ ਯਕੀਨਨ ਲੌਗ ਆਉਟ ਕਰਨਾ ਚਾਹੁੰਦੇ ਹੋ?'**
+  String get logoutConfirmationSubtitle;
+
+  /// No description provided for @viewTripDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'View Trip Details'**
+  String get viewTripDetails;
+
+  /// No description provided for @viewTripDetailsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਯਾਤਰਾ ਦੇ ਵੇਰਵੇ ਵੇਖੋ'**
+  String get viewTripDetailsSubtitle;
+
+  /// No description provided for @startNewTripTracking.
+  ///
+  /// In en, this message translates to:
+  /// **'Start a new trip to begin tracking'**
+  String get startNewTripTracking;
+
+  /// No description provided for @startNewTripTrackingSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਟ੍ਰੈਕਿੰਗ ਸ਼ੁਰੂ ਕਰਨ ਲਈ ਨਵੀਂ ਯਾਤਰਾ ਸ਼ੁਰੂ ਕਰੋ'**
+  String get startNewTripTrackingSubtitle;
+
+  /// No description provided for @quickActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick Actions'**
+  String get quickActions;
+
+  /// No description provided for @quickActionsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਤੇਜ਼ ਕਾਰਵਾਈਆਂ'**
+  String get quickActionsSubtitle;
+
+  /// No description provided for @scanDoc.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan Doc'**
+  String get scanDoc;
+
+  /// No description provided for @scanDocSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਦਸਤਾਵੇਜ਼ ਸਕੈਨ'**
+  String get scanDocSubtitle;
+
+  /// No description provided for @addExpense.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Expense'**
+  String get addExpense;
+
+  /// No description provided for @addExpenseSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਖਰਚਾ ਜੋੜੋ'**
+  String get addExpenseSubtitle;
+
+  /// No description provided for @voiceCommandsComingSoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice commands coming soon!'**
+  String get voiceCommandsComingSoon;
+
+  /// No description provided for @voiceCommandsComingSoonSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਆਵਾਜ਼ ਕਮਾਂਡ ਜਲਦੀ ਆ ਰਹੇ ਹਨ!'**
+  String get voiceCommandsComingSoonSubtitle;
+
+  /// No description provided for @home.
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get home;
+
+  /// No description provided for @homeSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਘਰ'**
+  String get homeSubtitle;
+
+  /// No description provided for @rate.
+  ///
+  /// In en, this message translates to:
+  /// **'Rate'**
+  String get rate;
+
+  /// No description provided for @rateSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਦਰ'**
+  String get rateSubtitle;
+
+  /// No description provided for @unknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown'**
+  String get unknown;
+
+  /// No description provided for @unknownSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਅਣਜਾਣ'**
+  String get unknownSubtitle;
+
+  /// No description provided for @profit.
+  ///
+  /// In en, this message translates to:
+  /// **'Profit'**
+  String get profit;
+
+  /// No description provided for @profitSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਮੁਨਾਫਾ'**
+  String get profitSubtitle;
+
+  /// No description provided for @welcomeToApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome to TruckMate'**
+  String get welcomeToApp;
+
+  /// No description provided for @welcomeToAppSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਟਰੱਕਮੇਟ ਵਿੱਚ ਜੀ ਆਇਆਂ ਨੂੰ'**
+  String get welcomeToAppSubtitle;
+
+  /// No description provided for @devModeOtp.
+  ///
+  /// In en, this message translates to:
+  /// **'Development Mode - OTP: 123456'**
+  String get devModeOtp;
+
+  /// No description provided for @verifyAndLogin.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify & Login'**
+  String get verifyAndLogin;
+
+  /// No description provided for @verifyAndLoginSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਪੁਸ਼ਟੀ ਕਰੋ ਅਤੇ ਲੌਗਇਨ ਕਰੋ'**
+  String get verifyAndLoginSubtitle;
+
+  /// No description provided for @changePhoneNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Change Phone Number'**
+  String get changePhoneNumber;
+
+  /// No description provided for @changePhoneNumberSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਫ਼ੋਨ ਨੰਬਰ ਬਦਲੋ'**
+  String get changePhoneNumberSubtitle;
+
+  /// No description provided for @appTagline.
+  ///
+  /// In en, this message translates to:
+  /// **'Trucking Management for Small Carriers'**
+  String get appTagline;
+
+  /// No description provided for @appTaglineSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਛੋਟੇ ਕੈਰੀਅਰਾਂ ਲਈ ਟਰੱਕਿੰਗ ਪ੍ਰਬੰਧਨ'**
+  String get appTaglineSubtitle;
 }
 
 class _AppLocalizationsDelegate

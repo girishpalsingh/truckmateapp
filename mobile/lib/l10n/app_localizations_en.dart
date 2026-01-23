@@ -406,4 +406,99 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get invalidOTPSubtitle => 'ਗਲਤ OTP';
+
+  @override
+  String get logoutConfirmation => 'Are you sure you want to logout?';
+
+  @override
+  String get logoutConfirmationSubtitle =>
+      'ਕੀ ਤੁਸੀਂ ਯਕੀਨਨ ਲੌਗ ਆਉਟ ਕਰਨਾ ਚਾਹੁੰਦੇ ਹੋ?';
+
+  @override
+  String get viewTripDetails => 'View Trip Details';
+
+  @override
+  String get viewTripDetailsSubtitle => 'ਯਾਤਰਾ ਦੇ ਵੇਰਵੇ ਵੇਖੋ';
+
+  @override
+  String get startNewTripTracking => 'Start a new trip to begin tracking';
+
+  @override
+  String get startNewTripTrackingSubtitle =>
+      'ਟ੍ਰੈਕਿੰਗ ਸ਼ੁਰੂ ਕਰਨ ਲਈ ਨਵੀਂ ਯਾਤਰਾ ਸ਼ੁਰੂ ਕਰੋ';
+
+  @override
+  String get quickActions => 'Quick Actions';
+
+  @override
+  String get quickActionsSubtitle => 'ਤੇਜ਼ ਕਾਰਵਾਈਆਂ';
+
+  @override
+  String get scanDoc => 'Scan Doc';
+
+  @override
+  String get scanDocSubtitle => 'ਦਸਤਾਵੇਜ਼ ਸਕੈਨ';
+
+  @override
+  String get addExpense => 'Add Expense';
+
+  @override
+  String get addExpenseSubtitle => 'ਖਰਚਾ ਜੋੜੋ';
+
+  @override
+  String get voiceCommandsComingSoon => 'Voice commands coming soon!';
+
+  @override
+  String get voiceCommandsComingSoonSubtitle => 'ਆਵਾਜ਼ ਕਮਾਂਡ ਜਲਦੀ ਆ ਰਹੇ ਹਨ!';
+
+  @override
+  String get home => 'Home';
+
+  @override
+  String get homeSubtitle => 'ਘਰ';
+
+  @override
+  String get rate => 'Rate';
+
+  @override
+  String get rateSubtitle => 'ਦਰ';
+
+  @override
+  String get unknown => 'Unknown';
+
+  @override
+  String get unknownSubtitle => 'ਅਣਜਾਣ';
+
+  @override
+  String get profit => 'Profit';
+
+  @override
+  String get profitSubtitle => 'ਮੁਨਾਫਾ';
+
+  @override
+  String get welcomeToApp => 'Welcome to TruckMate';
+
+  @override
+  String get welcomeToAppSubtitle => 'ਟਰੱਕਮੇਟ ਵਿੱਚ ਜੀ ਆਇਆਂ ਨੂੰ';
+
+  @override
+  String get devModeOtp => 'Development Mode - OTP: 123456';
+
+  @override
+  String get verifyAndLogin => 'Verify & Login';
+
+  @override
+  String get verifyAndLoginSubtitle => 'ਪੁਸ਼ਟੀ ਕਰੋ ਅਤੇ ਲੌਗਇਨ ਕਰੋ';
+
+  @override
+  String get changePhoneNumber => 'Change Phone Number';
+
+  @override
+  String get changePhoneNumberSubtitle => 'ਫ਼ੋਨ ਨੰਬਰ ਬਦਲੋ';
+
+  @override
+  String get appTagline => 'Trucking Management for Small Carriers';
+
+  @override
+  String get appTaglineSubtitle => 'ਛੋਟੇ ਕੈਰੀਅਰਾਂ ਲਈ ਟਰੱਕਿੰਗ ਪ੍ਰਬੰਧਨ';
 }
