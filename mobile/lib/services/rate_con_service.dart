@@ -19,8 +19,11 @@ class RateConService {
             *,
             clause_notifications(*)
           )
-        ''').eq('id', id).single();
+        ''').eq('id', id).maybeSingle();
 
+    if (response == null) {
+      throw Exception('Rate confirmation not found with id: $id');
+    }
     return RateCon.fromJson(response);
   }
 

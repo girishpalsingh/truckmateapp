@@ -32,14 +32,20 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
     if (notification.data != null) {
       final type = notification.data!['type'];
       if (type == 'rate_con_review') {
-        final rateConId = notification.data!['rate_con_id'];
+        // Strictly use new ID key as requested
+        final rateConId = notification.data!['rate_confirmation_id'];
+
         if (rateConId != null) {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => RateConAnalysisScreen(rateConId: rateConId),
+              builder: (context) =>
+                  RateConAnalysisScreen(rateConId: rateConId.toString()),
             ),
           );
+        } else {
+          debugPrint(
+              'Could not find rate_confirmation_id in notification data: ${notification.data}');
         }
       }
     }

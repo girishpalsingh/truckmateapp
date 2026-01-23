@@ -618,9 +618,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
               // Navigate based on type
               if (notification.data['type'] == 'rate_con_review') {
-                // Try both old and new key names for backwards compatibility
-                final rateConId = notification.data['rate_confirmation_id'] ??
-                    notification.data['rate_con_id'];
+                // Strictly use new ID key as requested
+                final rateConId = notification.data['rate_confirmation_id'];
+
                 if (rateConId != null) {
                   Navigator.push(
                     context,

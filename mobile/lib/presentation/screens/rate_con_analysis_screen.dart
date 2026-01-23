@@ -20,23 +20,31 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
   final RateConService _service = RateConService();
   bool _isLoading = true;
   RateCon? _rateCon;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
+    debugPrint(
+        'RateConAnalysisScreen: Loading rate con with ID: ${widget.rateConId}');
     _fetchAnalysis();
   }
 
   Future<void> _fetchAnalysis() async {
     try {
+      debugPrint('Fetching rate con: ${widget.rateConId}');
       final rateCon = await _service.getRateCon(widget.rateConId);
+      debugPrint('Rate con fetched successfully: ${rateCon.id}');
       setState(() {
         _rateCon = rateCon;
         _isLoading = false;
       });
     } catch (e) {
       debugPrint('Error fetching analysis: $e');
-      setState(() => _isLoading = false);
+      setState(() {
+        _errorMessage = e.toString();
+        _isLoading = false;
+      });
     }
   }
 
@@ -45,6 +53,41 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
     if (_isLoading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Analysis Result'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                const SizedBox(height: 16),
+                Text(
+                  'Could not load rate confirmation',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Go Back'),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
 

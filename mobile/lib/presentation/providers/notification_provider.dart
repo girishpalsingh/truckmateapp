@@ -116,6 +116,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
             final targetUserId = newRecord['user_id'];
             if (targetUserId != null && targetUserId != userId) {
               // Not for us
+
               return;
             }
 
@@ -128,6 +129,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
             // For now, let's assume the backend/RLS prevented connection or we just filter by user match logic.
 
             final notification = AppNotification.fromJson(newRecord);
+
             // Add new and limit to 10
             final currentList = [notification, ...state.notifications];
             if (currentList.length > 10) {
