@@ -1,6 +1,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { NotificationService } from './notification-service.ts';
-import { parseNumeric, parseTime, parseDate } from './utils.ts';
+import {
+    mapRateConData,
+    mapReferenceNumbers,
+    mapStops,
+    mapCharges,
+    mapRiskClauses,
+    mapDispatchInstructions
+} from './llm_response_proc/gemini_flash_rate_con_parser.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -15,49 +22,12 @@ export async function processRateCon(
     userId?: string | null
 ) {
     console.log(`Processing Rate Con for Doc ID: ${documentId}, Org: ${organizationId}`);
-    console.log('Extracted Data:', JSON.stringify(extractedData, null, 2));
+    // console.log('Extracted Data:', JSON.stringify(extractedData, null, 2));
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // 1. Insert into rate_confirmations (main table)
-    const rateConData = {
-        rate_con_id: extractedData.rate_con_id || `RC-${Date.now()}`,
-        document_id: documentId,
-        organization_id: organizationId,
-
-        // Broker Details
-        broker_name: extractedData.broker_details?.broker_name || null,
-        broker_mc_number: extractedData.broker_details?.broker_mc_number || null,
-        broker_address: extractedData.broker_details?.address || null,
-        broker_phone: extractedData.broker_details?.phone || null,
-        broker_email: extractedData.broker_details?.email || null,
-
-        // Carrier Details
-        carrier_name: extractedData.carrier_details?.carrier_name || null,
-        carrier_dot_number: extractedData.carrier_details?.carrier_dot_number || null,
-        carrier_address: extractedData.carrier_details?.address || null,
-        carrier_phone: extractedData.carrier_details?.phone || null,
-        carrier_email: extractedData.carrier_details?.email || null,
-        carrier_equipment_type: extractedData.carrier_details?.equipment_type || null,
-        carrier_equipment_number: extractedData.carrier_details?.equipment_number || null,
-
-        // Financials
-        total_rate_amount: parseNumeric(extractedData.financials?.total_rate_amount),
-        currency: extractedData.financials?.currency || 'USD',
-        payment_terms: extractedData.financials?.payment_terms || null,
-
-        // Commodity
-        commodity_name: extractedData.commodity_details?.commodity || null,
-        commodity_weight: parseNumeric(extractedData.commodity_details?.weight),
-        commodity_unit: extractedData.commodity_details?.unit || null,
-        pallet_count: extractedData.commodity_details?.pallet_count ? parseInt(String(extractedData.commodity_details.pallet_count)) : null,
-
-        // Risk
-        overall_traffic_light: extractedData.risk_analysis?.overall_traffic_light || extractedData.overall_traffic_light || null,
-
-        status: 'under_review',
-    };
-
+    const rateConData = mapRateConData(documentId, extractedData, organizationId);
     console.log("Inserting Rate Confirmation Data:", JSON.stringify(rateConData));
 
     const { data: rateCon, error: rateConError } = await supabase
@@ -75,96 +45,45 @@ export async function processRateCon(
     const rateConfirmationId = rateCon.id;
 
     // 2. Insert Reference Numbers
-    if (extractedData.reference_numbers && Array.isArray(extractedData.reference_numbers)) {
-        console.log(`Inserting ${extractedData.reference_numbers.length} reference numbers...`);
-
-        const refNumbersData = extractedData.reference_numbers.map((ref: any) => ({
-            rate_confirmation_id: rateConfirmationId,
-            ref_type: ref.type || null,
-            ref_value: ref.value || null,
-        }));
-
+    const refNumbersData = mapReferenceNumbers(rateConfirmationId, extractedData);
+    if (refNumbersData.length > 0) {
+        console.log(`Inserting ${refNumbersData.length} reference numbers...`);
         const { error: refError } = await supabase
             .from('reference_numbers')
             .insert(refNumbersData);
 
-        if (refError) {
-            console.error("Error inserting reference_numbers:", refError);
-        } else {
-            console.log("Reference numbers inserted successfully");
-        }
+        if (refError) console.error("Error inserting reference_numbers:", refError);
     }
 
     // 3. Insert Stops
-    if (extractedData.stops && Array.isArray(extractedData.stops)) {
-        console.log(`Inserting ${extractedData.stops.length} stops...`);
-
-        const stopsData = extractedData.stops.map((stop: any, index: number) => ({
-            rate_confirmation_id: rateConfirmationId,
-            sequence_number: index + 1,
-            stop_type: stop.stop_type === 'Pickup' ? 'Pickup' : 'Delivery',
-            address: stop.address || null,
-            contact_person: stop.contact_person || null,
-            phone: stop.phone || null,
-            email: stop.email || null,
-            scheduled_arrival: parseDate(stop.scheduled_arrival),
-            scheduled_departure: parseDate(stop.scheduled_departure),
-            date_raw: stop.date || null,
-            time_raw: stop.time || null,
-            special_instructions: stop.special_instructions || null,
-        }));
-
+    const stopsData = mapStops(rateConfirmationId, extractedData);
+    if (stopsData.length > 0) {
+        console.log(`Inserting ${stopsData.length} stops...`);
         const { error: stopsError } = await supabase
             .from('stops')
             .insert(stopsData);
 
-        if (stopsError) {
-            console.error("Error inserting stops:", stopsError);
-        } else {
-            console.log("Stops inserted successfully");
-        }
+        if (stopsError) console.error("Error inserting stops:", stopsError);
     }
 
     // 4. Insert Charges
-    if (extractedData.financials?.charges && Array.isArray(extractedData.financials.charges)) {
-        console.log(`Inserting ${extractedData.financials.charges.length} charges...`);
-
-        const chargesData = extractedData.financials.charges.map((charge: any) => ({
-            rate_confirmation_id: rateConfirmationId,
-            description: charge.description || null,
-            amount: parseNumeric(charge.amount),
-        }));
-
+    const chargesData = mapCharges(rateConfirmationId, extractedData);
+    if (chargesData.length > 0) {
+        console.log(`Inserting ${chargesData.length} charges...`);
         const { error: chargesError } = await supabase
             .from('charges')
             .insert(chargesData);
 
-        if (chargesError) {
-            console.error("Error inserting charges:", chargesError);
-        } else {
-            console.log("Charges inserted successfully");
-        }
+        if (chargesError) console.error("Error inserting charges:", chargesError);
     }
 
     // 5. Insert Risk Clauses and their Notifications
-    const clausesFound = extractedData.risk_analysis?.clauses_found || extractedData.clauses_found || extractedData.bad_clauses_found;
+    const clausesToInsert = mapRiskClauses(rateConfirmationId, extractedData);
+    if (clausesToInsert.length > 0) {
+        console.log(`Inserting ${clausesToInsert.length} risk clauses...`);
 
-    if (clausesFound && Array.isArray(clausesFound) && clausesFound.length > 0) {
-        console.log(`Inserting ${clausesFound.length} risk clauses...`);
-
-        for (const clause of clausesFound) {
+        for (const { clauseData, notificationData } of clausesToInsert) {
             // Insert risk clause
-            const clauseData = {
-                rate_confirmation_id: rateConfirmationId,
-                clause_type: clause.clause_type || null,
-                traffic_light: clause.traffic_light || 'YELLOW',
-                clause_title: clause.clause_title || null,
-                clause_title_punjabi: clause.clause_title_punjabi || null,
-                danger_simple_language: clause.danger_simple_language || null,
-                danger_simple_punjabi: clause.danger_simple_punjabi || null,
-                original_text: clause.original_text || null,
-            };
-
             const { data: riskClause, error: clauseError } = await supabase
                 .from('risk_clauses')
                 .insert(clauseData)
@@ -177,23 +96,15 @@ export async function processRateCon(
             }
 
             // Insert notification if present
-            if (clause.notification) {
-                const notificationData = {
-                    risk_clause_id: riskClause.id,
-                    title: clause.notification.title || null,
-                    description: clause.notification.description || null,
-                    trigger_type: clause.notification.trigger_type || null,
-                    start_event: clause.notification.notification_start_event || null,
-                    deadline_iso: parseDate(clause.notification.deadline_iso),
-                    relative_minutes_offset: clause.notification.relative_minutes_offset
-                        ? parseInt(String(clause.notification.relative_minutes_offset))
-                        : null,
-                    original_clause_excerpt: clause.notification.original_clause || null,
+            if (notificationData) {
+                const notifInsertData = {
+                    ...notificationData,
+                    risk_clause_id: riskClause.id
                 };
 
                 const { error: notifError } = await supabase
                     .from('clause_notifications')
-                    .insert(notificationData);
+                    .insert(notifInsertData);
 
                 if (notifError) {
                     console.error("Error inserting clause notification:", notifError);
@@ -201,6 +112,21 @@ export async function processRateCon(
             }
         }
         console.log("Risk clauses and notifications inserted successfully");
+    }
+
+    // 7. Insert Dispatch Instructions
+    const dispatchInstructions = mapDispatchInstructions(rateConfirmationId, extractedData, organizationId);
+    if (dispatchInstructions.length > 0) {
+        console.log(`Inserting ${dispatchInstructions.length} dispatch instructions...`);
+        const { error: instructionsError } = await supabase
+            .from('rate_con_dispatcher_instructions')
+            .insert(dispatchInstructions);
+
+        if (instructionsError) {
+            console.error("Error inserting dispatch instructions:", instructionsError);
+        } else {
+            console.log("Dispatch instructions inserted successfully");
+        }
     }
 
     // 6. Create user notification about new rate con

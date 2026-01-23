@@ -83,7 +83,10 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
   Future<void> _handleAccept() async {
     if (_rateCon == null) return;
 
+    print('DEBUG: Handling Accept Button Press');
     final createTrip = await showCreateTripDialog(context);
+    print('DEBUG: Dialog Result: $createTrip');
+
     if (createTrip == null) return;
 
     setState(() => _isLoading = true);
@@ -108,6 +111,7 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
             builder: (context) => CreateTripScreen(
               originAddress: pickupStop?.address,
               destinationAddress: deliveryStop?.address,
+              loadId: widget.rateConId,
             ),
           ),
         );
@@ -288,6 +292,42 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
                             onAccept: _handleAccept,
                             onReject: _handleReject,
                             isLoading: _isLoading,
+                          )
+                        else if (_rateCon!.status == 'approved')
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => CreateTripScreen(
+                                        // We'll try to get addresses from stops if available
+                                        originAddress: _rateCon!.stops
+                                            .where((s) =>
+                                                s.stopType == StopType.pickup)
+                                            .firstOrNull
+                                            ?.address,
+                                        destinationAddress: _rateCon!.stops
+                                            .where((s) =>
+                                                s.stopType == StopType.delivery)
+                                            .lastOrNull
+                                            ?.address,
+                                        loadId: widget.rateConId,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.add_road),
+                                label: const Text('Create Trip'),
+                                style: ElevatedButton.styleFrom(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 16),
+                                ),
+                              ),
+                            ),
                           ),
                       ],
                     ),

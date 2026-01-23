@@ -6,6 +6,8 @@ import '../themes/app_theme.dart';
 import 'rate_con_clauses_screen.dart';
 import 'rate_con_review_screen.dart';
 
+import 'package:url_launcher/url_launcher.dart';
+
 class RateConAnalysisScreen extends ConsumerStatefulWidget {
   final String rateConId;
 
@@ -45,6 +47,39 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
         _errorMessage = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _viewOriginalDocument() async {
+    if (_rateCon?.documentId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No document linked to this analysis')),
+      );
+      return;
+    }
+
+    try {
+      final url = await _service.getDocumentUrl(_rateCon!.documentId!);
+      if (url != null) {
+        final uri = Uri.parse(url);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } else {
+          throw 'Could not launch $url';
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Document URL not found')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening document: $e')),
+        );
+      }
     }
   }
 
@@ -192,6 +227,26 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 80),
                 padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Action 3: View Original Document
+            OutlinedButton.icon(
+              onPressed: _viewOriginalDocument,
+              icon: const Icon(Icons.description),
+              label: const DualLanguageText(
+                primaryText: 'View Original Document',
+                subtitleText: 'ਅਸਲੀ ਦਸਤਾਵੇਜ਼ ਦੇਖੋ',
+                primaryStyle:
+                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                alignment: CrossAxisAlignment.center,
+              ),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 80),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                foregroundColor: Colors.blue.shade700,
+                side: BorderSide(color: Colors.blue.shade700, width: 2),
               ),
             ),
             const SizedBox(height: 48),

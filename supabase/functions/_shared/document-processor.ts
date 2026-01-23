@@ -84,13 +84,18 @@ export async function processWithGemini(imageUrl: string, documentType: string, 
             }
         ],
         config: {
-            temperature: 0.1,
+            temperature: 0,
             maxOutputTokens: 25000,
             responseMimeType: "application/json"
         }
     });
 
     console.log('Gemini Result Keys:', Object.keys(result));
+
+    if (result.usageMetadata) {
+        console.log("Gemini Token Usage:", JSON.stringify(result.usageMetadata, null, 2));
+    }
+
     console.log('Full Gemini Response:', JSON.stringify(result, null, 2));
 
     const textContent = result.candidates?.[0]?.content?.parts?.[0]?.text || '';

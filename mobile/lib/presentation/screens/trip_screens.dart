@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../themes/app_theme.dart';
 import '../../services/trip_service.dart';
 import '../../core/utils/user_utils.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Alias for NewTripScreen when creating from rate con
 typedef CreateTripScreen = NewTripScreen;
@@ -11,11 +12,13 @@ typedef CreateTripScreen = NewTripScreen;
 class NewTripScreen extends ConsumerStatefulWidget {
   final String? originAddress;
   final String? destinationAddress;
+  final String? loadId;
 
   const NewTripScreen({
     super.key,
     this.originAddress,
     this.destinationAddress,
+    this.loadId,
   });
 
   @override
@@ -70,6 +73,7 @@ class _NewTripScreenState extends ConsumerState<NewTripScreen> {
 
       await _tripService.createTrip(
         organizationId: organizationId,
+        loadId: widget.loadId,
         driverId: userId, // Required for RLS policy
         originAddress: _originController.text,
         destinationAddress: _destinationController.text,
@@ -203,11 +207,44 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
 
   Future<void> _loadTrip() async {
     final trip = await TripService().getActiveTrip();
-    if (mounted)
+    if (mounted) {
       setState(() {
         _trip = trip;
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _createDispatcherSheet() async {
+    if (_trip?.loadId == null) return;
+
+    // Show loading indicator
+    setState(() => _isLoading = true);
+
+    try {
+      final url = await TripService().generateDispatcherSheet(_trip!.loadId!);
+      debugPrint('Dispatcher Sheet URL: $url');
+
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not launch URL: $url')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error creating dispatcher sheet: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -253,6 +290,205 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
                 ),
               ],
             ),
+            if (_trip?.loadId != null) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _createDispatcherSheet,
+                  icon: const Icon(Icons.description),
+                  label: const Text('Create Dispatcher Sheet'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Trip List Screen
+class TripListScreen extends ConsumerStatefulWidget {
+  const TripListScreen({super.key});
+
+  @override
+  ConsumerState<TripListScreen> createState() => _TripListScreenState();
+}
+
+class _TripListScreenState extends ConsumerState<TripListScreen> {
+  final TripService _tripService = TripService();
+  List<Trip>? _trips;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTrips();
+  }
+
+  Future<void> _loadTrips() async {
+    try {
+      final userId = await UserUtils.getUserId();
+      final trips = await _tripService.getTrips(driverId: userId);
+      if (mounted) {
+        setState(() {
+          _trips = trips;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading trips: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Trips')),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _trips == null || _trips!.isEmpty
+              ? const Center(child: Text('No trips found'))
+              : ListView.builder(
+                  itemCount: _trips!.length,
+                  itemBuilder: (context, index) {
+                    final trip = _trips![index];
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: ListTile(
+                        title: Text(
+                          '${trip.originAddress ?? "Unknown"} → ${trip.destinationAddress ?? "Unknown"}',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          'Date: ${trip.createdAt?.toLocal().toString().split(' ')[0] ?? "N/A"}\nStatus: ${trip.status}',
+                        ),
+                        leading: Icon(
+                          trip.status == 'active'
+                              ? Icons.local_shipping
+                              : Icons.check_circle,
+                          color: trip.status == 'active'
+                              ? Colors.green
+                              : Colors.grey,
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  TripDetailScreen(trip: trip),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+
+/// Trip Detail Screen
+class TripDetailScreen extends ConsumerStatefulWidget {
+  final Trip trip;
+  const TripDetailScreen({super.key, required this.trip});
+
+  @override
+  ConsumerState<TripDetailScreen> createState() => _TripDetailScreenState();
+}
+
+class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
+  bool _isLoading = false;
+
+  Future<void> _createDispatcherSheet() async {
+    if (widget.trip.loadId == null) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final url =
+          await TripService().generateDispatcherSheet(widget.trip.loadId!);
+      debugPrint('Dispatcher Sheet URL: $url');
+
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not launch URL: $url')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error creating dispatcher sheet: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Trip Details')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Origin',
+                        style: Theme.of(context).textTheme.labelSmall),
+                    Text(widget.trip.originAddress ?? 'Unknown',
+                        style: const TextStyle(fontSize: 16)),
+                    const SizedBox(height: 12),
+                    Text('Destination',
+                        style: Theme.of(context).textTheme.labelSmall),
+                    Text(widget.trip.destinationAddress ?? 'Unknown',
+                        style: const TextStyle(fontSize: 16)),
+                    const SizedBox(height: 12),
+                    Text('Status: ${widget.trip.status}',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    if (widget.trip.loadId != null) ...[
+                      const SizedBox(height: 8),
+                      Text('Load ID: ${widget.trip.loadId}'),
+                    ]
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            if (widget.trip.loadId != null)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _createDispatcherSheet,
+                  icon: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.description),
+                  label: Text(
+                      _isLoading ? 'Generating...' : 'Create Dispatcher Sheet'),
+                ),
+              ),
           ],
         ),
       ),

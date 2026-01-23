@@ -116,6 +116,21 @@ class TripService {
     }
     return null;
   }
+
+  /// Generate Dispatcher Sheet
+  Future<String> generateDispatcherSheet(String loadId) async {
+    final response = await _client.functions.invoke(
+      'generate-dispatch-sheet',
+      body: {'load_id': loadId},
+    );
+
+    final data = response.data as Map<String, dynamic>;
+    if (data['url'] == null) {
+      throw Exception('Failed to generate dispatcher sheet: No URL returned');
+    }
+
+    return data['url'] as String;
+  }
 }
 
 class Trip {

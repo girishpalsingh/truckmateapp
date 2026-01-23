@@ -107,6 +107,7 @@ class TruckMateApp extends StatelessWidget {
         '/dashboard': (context) => const DashboardScreen(),
         '/trip/new': (context) => const NewTripScreen(),
         '/trip/active': (context) => const ActiveTripScreen(),
+        '/trips': (context) => const TripListScreen(),
         '/scan': (context) => const DocumentScannerScreen(),
         '/expense': (context) => const ExpenseScreen(),
         '/documents': (context) => const PendingDocumentsScreen(),
