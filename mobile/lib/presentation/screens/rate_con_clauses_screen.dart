@@ -1,160 +1,444 @@
 import 'package:flutter/material.dart';
-import '../../data/models/rate_con_clause.dart';
+import '../../data/models/risk_clause.dart';
+import '../../services/rate_con_service.dart';
 import '../themes/app_theme.dart';
+import '../widgets/rate_con_action_buttons.dart';
 
-class RateConClausesScreen extends StatelessWidget {
-  final List<RateConClause> clauses;
+class RateConClausesScreen extends StatefulWidget {
+  final String rateConId;
+  final List<RiskClause> clauses;
 
-  const RateConClausesScreen({super.key, required this.clauses});
+  const RateConClausesScreen({
+    super.key,
+    required this.rateConId,
+    required this.clauses,
+  });
+
+  @override
+  State<RateConClausesScreen> createState() => _RateConClausesScreenState();
+}
+
+class _RateConClausesScreenState extends State<RateConClausesScreen> {
+  final RateConService _service = RateConService();
+  bool _isLoading = false;
+
+  Future<void> _handleAccept() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const DualLanguageText(
+          primaryText: 'Accept Rate Con?',
+          subtitleText: 'ਰੇਟ ਕੋਨ ਸਵੀਕਾਰ ਕਰੋ?',
+          primaryStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+        ),
+        content: const DualLanguageText(
+          primaryText:
+              'You have reviewed the risk clauses and want to accept this rate confirmation.',
+          subtitleText:
+              'ਤੁਸੀਂ ਜੋਖਮ ਧਾਰਾਵਾਂ ਦੀ ਸਮੀਖਿਆ ਕੀਤੀ ਹੈ ਅਤੇ ਇਸ ਰੇਟ ਕਨਫਰਮੇਸ਼ਨ ਨੂੰ ਸਵੀਕਾਰ ਕਰਨਾ ਚਾਹੁੰਦੇ ਹੋ।',
+          primaryStyle: TextStyle(fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('Accept'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      await _service.approveRateCon(widget.rateConId, {});
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Rate Confirmation Accepted'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _handleReject() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const DualLanguageText(
+          primaryText: 'Reject Rate Con?',
+          subtitleText: 'ਰੇਟ ਕੋਨ ਰੱਦ ਕਰੋ?',
+          primaryStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+        ),
+        content: const DualLanguageText(
+          primaryText:
+              'The clauses are too risky. Reject this rate confirmation.',
+          subtitleText: 'ਧਾਰਾਵਾਂ ਬਹੁਤ ਖਤਰਨਾਕ ਹਨ। ਇਸ ਰੇਟ ਕਨਫਰਮੇਸ਼ਨ ਨੂੰ ਰੱਦ ਕਰੋ।',
+          primaryStyle: TextStyle(fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      await _service.rejectRateCon(widget.rateConId);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Rate Confirmation Rejected'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Sort clauses by traffic light severity (RED first, then YELLOW, then GREEN)
+    final sortedClauses = List<RiskClause>.from(widget.clauses)
+      ..sort((a, b) {
+        final order = {
+          TrafficLight.red: 0,
+          TrafficLight.yellow: 1,
+          TrafficLight.green: 2
+        };
+        return (order[a.trafficLight] ?? 3)
+            .compareTo(order[b.trafficLight] ?? 3);
+      });
+
     return Scaffold(
       appBar: AppBar(
         title: const DualLanguageText(
-          primaryText: 'Clause Analysis',
-          subtitleText: 'ਸ਼ਰਤਾਂ ਦਾ ਵਿਸ਼ਲੇਸ਼ਣ',
+          primaryText: 'Risk Clauses',
+          subtitleText: 'ਜੋਖਮ ਧਾਰਾਵਾਂ',
           primaryStyle: TextStyle(color: Colors.white),
           subtitleStyle: TextStyle(color: Colors.white70, fontSize: 10),
         ),
       ),
-      body: clauses.isEmpty
-          ? const Center(child: Text('No flagged clauses found.'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: clauses.length,
-              itemBuilder: (context, index) {
-                final clause = clauses[index];
-                return _buildClauseCard(context, clause);
-              },
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                // Summary Header
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .errorContainer
+                        .withOpacity(0.3),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildSummaryChip(
+                          '🔴',
+                          sortedClauses
+                              .where((c) => c.trafficLight == TrafficLight.red)
+                              .length),
+                      _buildSummaryChip(
+                          '🟡',
+                          sortedClauses
+                              .where(
+                                  (c) => c.trafficLight == TrafficLight.yellow)
+                              .length),
+                      _buildSummaryChip(
+                          '🟢',
+                          sortedClauses
+                              .where(
+                                  (c) => c.trafficLight == TrafficLight.green)
+                              .length),
+                    ],
+                  ),
+                ),
+
+                // Clauses List
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: sortedClauses.length,
+                    itemBuilder: (context, index) {
+                      return _buildClauseCard(context, sortedClauses[index]);
+                    },
+                  ),
+                ),
+
+                // Action Buttons
+                RateConActionButtons(
+                  onAccept: _handleAccept,
+                  onReject: _handleReject,
+                  isLoading: _isLoading,
+                ),
+              ],
             ),
     );
   }
 
-  Widget _buildClauseCard(BuildContext context, RateConClause clause) {
-    Color color;
-    IconData icon;
+  Widget _buildSummaryChip(String emoji, int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 20)),
+          const SizedBox(width: 8),
+          Text(
+            count.toString(),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
 
-    switch (clause.trafficLight?.toUpperCase()) {
-      case 'RED':
-        color = Colors.red;
-        icon = Icons.warning_amber_rounded;
+  Widget _buildClauseCard(BuildContext context, RiskClause clause) {
+    Color borderColor;
+    Color bgColor;
+
+    switch (clause.trafficLight) {
+      case TrafficLight.red:
+        borderColor = Colors.red;
+        bgColor = Colors.red.withOpacity(0.05);
         break;
-      case 'YELLOW':
-        color = Colors.orange;
-        icon = Icons.info_outline;
+      case TrafficLight.yellow:
+        borderColor = Colors.orange;
+        bgColor = Colors.orange.withOpacity(0.05);
         break;
-      case 'GREEN':
-        color = Colors.green;
-        icon = Icons.check_circle_outline;
+      case TrafficLight.green:
+        borderColor = Colors.green;
+        bgColor = Colors.green.withOpacity(0.05);
         break;
-      default:
-        color = Colors.grey;
-        icon = Icons.help_outline;
     }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: color.withOpacity(0.5), width: 1),
+        side: BorderSide(color: borderColor, width: 2),
       ),
-      child: ExpansionTile(
-        leading: Icon(icon, color: color, size: 32),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Clause Type Badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              margin: const EdgeInsets.only(bottom: 4),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: color.withOpacity(0.3)),
-              ),
-              child: Text(
-                clause.clauseType?.toUpperCase() ?? 'UNKNOWN',
-                style: TextStyle(
-                  color: color,
-                  fontSize: 10,
+      child: Container(
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          leading: Text(
+            clause.trafficLightDisplay,
+            style: const TextStyle(fontSize: 28),
+          ),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Clause Type Badge
+              if (clause.clauseType != null)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  margin: const EdgeInsets.only(bottom: 4),
+                  decoration: BoxDecoration(
+                    color: borderColor.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    clause.clauseType!.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: borderColor,
+                    ),
+                  ),
+                ),
+              // Clause Title
+              Text(
+                clause.clauseTitle ?? 'Clause',
+                style: const TextStyle(
                   fontWeight: FontWeight.bold,
+                  fontSize: 16,
                 ),
               ),
-            ),
-            // Title
-            DualLanguageText(
-              primaryText:
-                  clause.clauseTitle ?? clause.dangerSimpleLanguage ?? 'Clause',
-              subtitleText: clause.clauseTitlePunjabi,
-              primaryStyle: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: DualLanguageText(
-            primaryText: clause.dangerSimpleLanguage ?? '',
-            subtitleText: clause.dangerSimplePunjabi,
-            primaryStyle: TextStyle(
-              color: Colors.grey.shade800,
-              fontSize: 14,
+              // Punjabi Title
+              if (clause.clauseTitlePunjabi != null)
+                Text(
+                  clause.clauseTitlePunjabi!,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                  ),
+                ),
+            ],
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              clause.dangerSimpleLanguage ?? '',
+              style: const TextStyle(fontSize: 14),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-        ),
-        childrenPadding: const EdgeInsets.all(16),
-        children: [
-          if (clause.originalText != null) ...[
-            const SizedBox(height: 12),
-            const Text(
-              'Original Text:',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                  color: Colors.grey),
-            ),
-            const SizedBox(height: 4),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
+          children: [
+            // Punjabi Explanation
+            if (clause.dangerSimplePunjabi != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'ਪੰਜਾਬੀ:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      clause.dangerSimplePunjabi!,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ],
+                ),
               ),
-              child: Text(
-                clause.originalText!,
-                style: const TextStyle(fontStyle: FontStyle.italic),
-              ),
-            ),
-          ],
-          if (clause.warningEn != null) ...[
-            const SizedBox(height: 12),
-            _buildDetailRow('Warning', clause.warningEn!),
-          ],
-        ],
-      ),
-    );
-  }
+              const SizedBox(height: 12),
+            ],
 
-  Widget _buildDetailRow(String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 80,
-          child: Text(
-            '$label:',
-            style: const TextStyle(
-                fontWeight: FontWeight.bold, color: Colors.grey),
-          ),
+            // Original Text
+            if (clause.originalText != null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Original Clause:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: Colors.grey,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      clause.originalText!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            // Notification Info
+            if (clause.notification != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.notifications_active,
+                        color: Colors.blue, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            clause.notification!.title ?? 'Reminder',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                          if (clause.notification!.description != null)
+                            Text(
+                              clause.notification!.description!,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          Text(
+                            clause.notification!.displayTiming,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.blue[700],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
         ),
-        Expanded(
-          child: Text(value),
-        ),
-      ],
+      ),
     );
   }
 }

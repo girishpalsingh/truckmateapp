@@ -1,136 +1,199 @@
+import 'reference_number.dart';
+import 'stop.dart';
+import 'charge.dart';
+import 'risk_clause.dart';
+
+/// Traffic light risk levels for overall rate con
+enum RateConTrafficLight { red, yellow, green, unknown }
+
+/// Rate Confirmation model matching new normalized schema
 class RateCon {
   final String id;
+  final String rateConId;
+  final String? documentId;
   final String organizationId;
+
+  // Broker Details
   final String? brokerName;
   final String? brokerMcNumber;
-  final String? loadId;
+  final String? brokerAddress;
+  final String? brokerPhone;
+  final String? brokerEmail;
+
+  // Carrier Details
   final String? carrierName;
-  final String? carrierMcNumber;
-  final String? pickupAddress;
-  final DateTime? pickupDate;
-  final String?
-      pickupTime; // keeping as String for now to match flexible schema or TimeOfDay later
-  final String? deliveryAddress;
-  final DateTime? deliveryDate;
-  final String? deliveryTime;
-  final double? rateAmount;
-  final String? commodity;
-  final double? weight;
-  final double? detentionLimit;
-  final double? detentionAmountPerHour;
-  final double? fineAmount;
-  final String? fineDescription;
-  final Map<String, dynamic>? contacts;
-  final String? notes;
-  final String? instructions;
-  final String status; // 'under_review', 'processing', 'approved'
-  final String? overallTrafficLight; // 'RED', 'YELLOW', 'GREEN'
+  final String? carrierDotNumber;
+  final String? carrierAddress;
+  final String? carrierPhone;
+  final String? carrierEmail;
+  final String? carrierEquipmentType;
+  final String? carrierEquipmentNumber;
+
+  // Financials
+  final double? totalRateAmount;
+  final String currency;
+  final String? paymentTerms;
+
+  // Commodity
+  final String? commodityName;
+  final double? commodityWeight;
+  final String? commodityUnit;
+  final int? palletCount;
+
+  // Risk
+  final RateConTrafficLight overallTrafficLight;
+  final String status;
+
+  // Timestamps
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  // Related data (loaded separately)
+  final List<ReferenceNumber> referenceNumbers;
+  final List<Stop> stops;
+  final List<Charge> charges;
+  final List<RiskClause> riskClauses;
+
   RateCon({
     required this.id,
+    required this.rateConId,
+    this.documentId,
     required this.organizationId,
     this.brokerName,
     this.brokerMcNumber,
-    this.loadId,
+    this.brokerAddress,
+    this.brokerPhone,
+    this.brokerEmail,
     this.carrierName,
-    this.carrierMcNumber,
-    this.pickupAddress,
-    this.pickupDate,
-    this.pickupTime,
-    this.deliveryAddress,
-    this.deliveryDate,
-    this.deliveryTime,
-    this.rateAmount,
-    this.commodity,
-    this.weight,
-    this.detentionLimit,
-    this.detentionAmountPerHour,
-    this.fineAmount,
-    this.fineDescription,
-    this.contacts,
-    this.notes,
-    this.instructions,
+    this.carrierDotNumber,
+    this.carrierAddress,
+    this.carrierPhone,
+    this.carrierEmail,
+    this.carrierEquipmentType,
+    this.carrierEquipmentNumber,
+    this.totalRateAmount,
+    this.currency = 'USD',
+    this.paymentTerms,
+    this.commodityName,
+    this.commodityWeight,
+    this.commodityUnit,
+    this.palletCount,
+    this.overallTrafficLight = RateConTrafficLight.unknown,
     required this.status,
-    this.overallTrafficLight,
     required this.createdAt,
     required this.updatedAt,
+    this.referenceNumbers = const [],
+    this.stops = const [],
+    this.charges = const [],
+    this.riskClauses = const [],
   });
 
   factory RateCon.fromJson(Map<String, dynamic> json) {
     return RateCon(
       id: json['id'],
+      rateConId: json['rate_con_id'] ?? '',
+      documentId: json['document_id'],
       organizationId: json['organization_id'],
+
+      // Broker
       brokerName: json['broker_name'],
       brokerMcNumber: json['broker_mc_number'],
-      loadId: json['load_id'],
+      brokerAddress: json['broker_address'],
+      brokerPhone: json['broker_phone'],
+      brokerEmail: json['broker_email'],
+
+      // Carrier
       carrierName: json['carrier_name'],
-      carrierMcNumber: json['carrier_mc_number'],
-      pickupAddress: json['pickup_address'],
-      pickupDate: json['pickup_date'] != null
-          ? DateTime.tryParse(json['pickup_date'])
+      carrierDotNumber: json['carrier_dot_number'],
+      carrierAddress: json['carrier_address'],
+      carrierPhone: json['carrier_phone'],
+      carrierEmail: json['carrier_email'],
+      carrierEquipmentType: json['carrier_equipment_type'],
+      carrierEquipmentNumber: json['carrier_equipment_number'],
+
+      // Financials
+      totalRateAmount: json['total_rate_amount'] != null
+          ? (json['total_rate_amount'] as num).toDouble()
           : null,
-      pickupTime: json['pickup_time']
-          ?.toString(), // Handle potential time type mismatch safely
-      deliveryAddress: json['delivery_address'],
-      deliveryDate: json['delivery_date'] != null
-          ? DateTime.tryParse(json['delivery_date'])
+      currency: json['currency'] ?? 'USD',
+      paymentTerms: json['payment_terms'],
+
+      // Commodity
+      commodityName: json['commodity_name'],
+      commodityWeight: json['commodity_weight'] != null
+          ? (json['commodity_weight'] as num).toDouble()
           : null,
-      deliveryTime: json['delivery_time']?.toString(),
-      rateAmount: json['rate_amount'] != null
-          ? (json['rate_amount'] as num).toDouble()
-          : null,
-      commodity: json['commodity'],
-      weight:
-          json['weight'] != null ? (json['weight'] as num).toDouble() : null,
-      detentionLimit: json['detention_limit'] != null
-          ? (json['detention_limit'] as num).toDouble()
-          : null,
-      detentionAmountPerHour: json['detention_amount_per_hour'] != null
-          ? (json['detention_amount_per_hour'] as num).toDouble()
-          : null,
-      fineAmount: json['fine_amount'] != null
-          ? (json['fine_amount'] as num).toDouble()
-          : null,
-      fineDescription: json['fine_description'],
-      contacts: json['contacts'],
-      notes: json['notes'],
-      instructions: json['instructions'],
+      commodityUnit: json['commodity_unit'],
+      palletCount: json['pallet_count'],
+
+      // Risk
+      overallTrafficLight: _parseTrafficLight(json['overall_traffic_light']),
       status: json['status'] ?? 'under_review',
-      overallTrafficLight: json['overall_traffic_light'],
+
+      // Timestamps
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: DateTime.parse(json['updated_at']),
+
+      // Related data (populated if included in query)
+      referenceNumbers: json['reference_numbers'] != null
+          ? (json['reference_numbers'] as List)
+              .map((e) => ReferenceNumber.fromJson(e))
+              .toList()
+          : [],
+      stops: json['stops'] != null
+          ? (json['stops'] as List).map((e) => Stop.fromJson(e)).toList()
+          : [],
+      charges: json['charges'] != null
+          ? (json['charges'] as List).map((e) => Charge.fromJson(e)).toList()
+          : [],
+      riskClauses: json['risk_clauses'] != null
+          ? (json['risk_clauses'] as List)
+              .map((e) => RiskClause.fromJson(e))
+              .toList()
+          : [],
     );
+  }
+
+  static RateConTrafficLight _parseTrafficLight(String? value) {
+    switch (value?.toUpperCase()) {
+      case 'RED':
+        return RateConTrafficLight.red;
+      case 'YELLOW':
+        return RateConTrafficLight.yellow;
+      case 'GREEN':
+        return RateConTrafficLight.green;
+      default:
+        return RateConTrafficLight.unknown;
+    }
   }
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'rate_con_id': rateConId,
+      'document_id': documentId,
       'organization_id': organizationId,
       'broker_name': brokerName,
       'broker_mc_number': brokerMcNumber,
-      'load_id': loadId,
+      'broker_address': brokerAddress,
+      'broker_phone': brokerPhone,
+      'broker_email': brokerEmail,
       'carrier_name': carrierName,
-      'carrier_mc_number': carrierMcNumber,
-      'pickup_address': pickupAddress,
-      'pickup_date': pickupDate?.toIso8601String(),
-      'pickup_time': pickupTime,
-      'delivery_address': deliveryAddress,
-      'delivery_date': deliveryDate?.toIso8601String(),
-      'delivery_time': deliveryTime,
-      'rate_amount': rateAmount,
-      'commodity': commodity,
-      'weight': weight,
-      'detention_limit': detentionLimit,
-      'detention_amount_per_hour': detentionAmountPerHour,
-      'fine_amount': fineAmount,
-      'fine_description': fineDescription,
-      'contacts': contacts,
-      'notes': notes,
-      'instructions': instructions,
+      'carrier_dot_number': carrierDotNumber,
+      'carrier_address': carrierAddress,
+      'carrier_phone': carrierPhone,
+      'carrier_email': carrierEmail,
+      'carrier_equipment_type': carrierEquipmentType,
+      'carrier_equipment_number': carrierEquipmentNumber,
+      'total_rate_amount': totalRateAmount,
+      'currency': currency,
+      'payment_terms': paymentTerms,
+      'commodity_name': commodityName,
+      'commodity_weight': commodityWeight,
+      'commodity_unit': commodityUnit,
+      'pallet_count': palletCount,
+      'overall_traffic_light': overallTrafficLight.name.toUpperCase(),
       'status': status,
-      'overall_traffic_light': overallTrafficLight,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -138,60 +201,87 @@ class RateCon {
 
   RateCon copyWith({
     String? id,
+    String? rateConId,
+    String? documentId,
     String? organizationId,
     String? brokerName,
     String? brokerMcNumber,
-    String? loadId,
+    String? brokerAddress,
+    String? brokerPhone,
+    String? brokerEmail,
     String? carrierName,
-    String? carrierMcNumber,
-    String? pickupAddress,
-    DateTime? pickupDate,
-    String? pickupTime,
-    String? deliveryAddress,
-    DateTime? deliveryDate,
-    String? deliveryTime,
-    double? rateAmount,
-    String? commodity,
-    double? weight,
-    double? detentionLimit,
-    double? detentionAmountPerHour,
-    double? fineAmount,
-    String? fineDescription,
-    Map<String, dynamic>? contacts,
-    String? notes,
-    String? instructions,
+    String? carrierDotNumber,
+    String? carrierAddress,
+    String? carrierPhone,
+    String? carrierEmail,
+    String? carrierEquipmentType,
+    String? carrierEquipmentNumber,
+    double? totalRateAmount,
+    String? currency,
+    String? paymentTerms,
+    String? commodityName,
+    double? commodityWeight,
+    String? commodityUnit,
+    int? palletCount,
+    RateConTrafficLight? overallTrafficLight,
     String? status,
     DateTime? createdAt,
     DateTime? updatedAt,
+    List<ReferenceNumber>? referenceNumbers,
+    List<Stop>? stops,
+    List<Charge>? charges,
+    List<RiskClause>? riskClauses,
   }) {
     return RateCon(
       id: id ?? this.id,
+      rateConId: rateConId ?? this.rateConId,
+      documentId: documentId ?? this.documentId,
       organizationId: organizationId ?? this.organizationId,
       brokerName: brokerName ?? this.brokerName,
       brokerMcNumber: brokerMcNumber ?? this.brokerMcNumber,
-      loadId: loadId ?? this.loadId,
+      brokerAddress: brokerAddress ?? this.brokerAddress,
+      brokerPhone: brokerPhone ?? this.brokerPhone,
+      brokerEmail: brokerEmail ?? this.brokerEmail,
       carrierName: carrierName ?? this.carrierName,
-      carrierMcNumber: carrierMcNumber ?? this.carrierMcNumber,
-      pickupAddress: pickupAddress ?? this.pickupAddress,
-      pickupDate: pickupDate ?? this.pickupDate,
-      pickupTime: pickupTime ?? this.pickupTime,
-      deliveryAddress: deliveryAddress ?? this.deliveryAddress,
-      deliveryDate: deliveryDate ?? this.deliveryDate,
-      deliveryTime: deliveryTime ?? this.deliveryTime,
-      rateAmount: rateAmount ?? this.rateAmount,
-      commodity: commodity ?? this.commodity,
-      weight: weight ?? this.weight,
-      detentionLimit: detentionLimit ?? this.detentionLimit,
-      detentionAmountPerHour:
-          detentionAmountPerHour ?? this.detentionAmountPerHour,
-      fineAmount: fineAmount ?? this.fineAmount,
-      fineDescription: fineDescription ?? this.fineDescription,
-      contacts: contacts ?? this.contacts,
-      notes: notes ?? this.notes,
-      instructions: instructions ?? this.instructions,
+      carrierDotNumber: carrierDotNumber ?? this.carrierDotNumber,
+      carrierAddress: carrierAddress ?? this.carrierAddress,
+      carrierPhone: carrierPhone ?? this.carrierPhone,
+      carrierEmail: carrierEmail ?? this.carrierEmail,
+      carrierEquipmentType: carrierEquipmentType ?? this.carrierEquipmentType,
+      carrierEquipmentNumber:
+          carrierEquipmentNumber ?? this.carrierEquipmentNumber,
+      totalRateAmount: totalRateAmount ?? this.totalRateAmount,
+      currency: currency ?? this.currency,
+      paymentTerms: paymentTerms ?? this.paymentTerms,
+      commodityName: commodityName ?? this.commodityName,
+      commodityWeight: commodityWeight ?? this.commodityWeight,
+      commodityUnit: commodityUnit ?? this.commodityUnit,
+      palletCount: palletCount ?? this.palletCount,
+      overallTrafficLight: overallTrafficLight ?? this.overallTrafficLight,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      referenceNumbers: referenceNumbers ?? this.referenceNumbers,
+      stops: stops ?? this.stops,
+      charges: charges ?? this.charges,
+      riskClauses: riskClauses ?? this.riskClauses,
     );
   }
+
+  String get trafficLightEmoji {
+    switch (overallTrafficLight) {
+      case RateConTrafficLight.red:
+        return '🔴';
+      case RateConTrafficLight.yellow:
+        return '🟡';
+      case RateConTrafficLight.green:
+        return '🟢';
+      case RateConTrafficLight.unknown:
+        return '⚪';
+    }
+  }
+
+  String get displayTotalRate => totalRateAmount != null
+      ? '\$${totalRateAmount!.toStringAsFixed(2)}'
+      : 'N/A';
 }

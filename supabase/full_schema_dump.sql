@@ -127,14 +127,60 @@ CREATE TYPE "public"."load_status" AS ENUM (
 ALTER TYPE "public"."load_status" OWNER TO "postgres";
 
 
+CREATE TYPE "public"."notification_event_enum" AS ENUM (
+    'Before Contract signature',
+    'Daily Check Call',
+    'Status',
+    'Detention Start',
+    'Delivery Delay',
+    'Delivery Done',
+    'Pickup Delay',
+    'Pickup Done',
+    'Other'
+);
+
+
+ALTER TYPE "public"."notification_event_enum" OWNER TO "supabase_admin";
+
+
 CREATE TYPE "public"."rate_con_status" AS ENUM (
     'under_review',
     'processing',
-    'approved'
+    'approved',
+    'rejected'
 );
 
 
 ALTER TYPE "public"."rate_con_status" OWNER TO "supabase_admin";
+
+
+CREATE TYPE "public"."stop_type_enum" AS ENUM (
+    'Pickup',
+    'Delivery'
+);
+
+
+ALTER TYPE "public"."stop_type_enum" OWNER TO "supabase_admin";
+
+
+CREATE TYPE "public"."traffic_light_status" AS ENUM (
+    'RED',
+    'YELLOW',
+    'GREEN'
+);
+
+
+ALTER TYPE "public"."traffic_light_status" OWNER TO "supabase_admin";
+
+
+CREATE TYPE "public"."trigger_type_enum" AS ENUM (
+    'Absolute',
+    'Relative',
+    'Conditional'
+);
+
+
+ALTER TYPE "public"."trigger_type_enum" OWNER TO "supabase_admin";
 
 
 CREATE TYPE "public"."trip_status" AS ENUM (
@@ -449,6 +495,35 @@ CREATE TABLE IF NOT EXISTS "public"."audit_log" (
 ALTER TABLE "public"."audit_log" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."charges" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "rate_confirmation_id" "uuid" NOT NULL,
+    "description" character varying(255),
+    "amount" numeric(10,2),
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE "public"."charges" OWNER TO "supabase_admin";
+
+
+CREATE TABLE IF NOT EXISTS "public"."clause_notifications" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "risk_clause_id" "uuid" NOT NULL,
+    "title" character varying(100),
+    "description" "text",
+    "trigger_type" "public"."trigger_type_enum",
+    "start_event" "public"."notification_event_enum",
+    "deadline_iso" timestamp with time zone,
+    "relative_minutes_offset" integer,
+    "original_clause_excerpt" "text",
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE "public"."clause_notifications" OWNER TO "supabase_admin";
+
+
 CREATE TABLE IF NOT EXISTS "public"."document_audit_log" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "document_id" "uuid",
@@ -677,70 +752,88 @@ COMMENT ON COLUMN "public"."profiles"."is_active" IS 'Whether the user account i
 
 
 
-CREATE TABLE IF NOT EXISTS "public"."rate_con_clauses" (
+CREATE TABLE IF NOT EXISTS "public"."rate_confirmations" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "rate_con_id" "uuid" NOT NULL,
-    "clause_type" "text",
-    "traffic_light" "text",
-    "clause_title" "text",
+    "rate_con_id" character varying(50) NOT NULL,
+    "document_id" "uuid",
+    "organization_id" "uuid" NOT NULL,
+    "broker_name" character varying(255),
+    "broker_mc_number" character varying(50),
+    "broker_address" "text",
+    "broker_phone" character varying(50),
+    "broker_email" character varying(255),
+    "carrier_name" character varying(255),
+    "carrier_dot_number" character varying(50),
+    "carrier_address" "text",
+    "carrier_phone" character varying(50),
+    "carrier_email" character varying(255),
+    "carrier_equipment_type" character varying(100),
+    "carrier_equipment_number" character varying(50),
+    "total_rate_amount" numeric(10,2),
+    "currency" character varying(3) DEFAULT 'USD'::character varying,
+    "payment_terms" "text",
+    "commodity_name" character varying(255),
+    "commodity_weight" numeric(10,2),
+    "commodity_unit" character varying(20),
+    "pallet_count" integer,
+    "overall_traffic_light" "public"."traffic_light_status",
+    "status" character varying(20) DEFAULT 'under_review'::character varying,
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE "public"."rate_confirmations" OWNER TO "supabase_admin";
+
+
+CREATE TABLE IF NOT EXISTS "public"."reference_numbers" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "rate_confirmation_id" "uuid" NOT NULL,
+    "ref_type" character varying(50),
+    "ref_value" character varying(255),
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE "public"."reference_numbers" OWNER TO "supabase_admin";
+
+
+CREATE TABLE IF NOT EXISTS "public"."risk_clauses" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "rate_confirmation_id" "uuid" NOT NULL,
+    "clause_type" character varying(50),
+    "traffic_light" "public"."traffic_light_status" NOT NULL,
+    "clause_title" character varying(255),
     "clause_title_punjabi" "text",
     "danger_simple_language" "text",
     "danger_simple_punjabi" "text",
     "original_text" "text",
-    "warning_en" "text",
-    "warning_pa" "text",
-    "notification_data" "jsonb",
-    "notification_title" "text",
-    "notification_description" "text",
-    "notification_trigger_type" "text",
-    "notification_deadline" "date",
-    "notification_relative_offset" integer,
-    "notification_start_event" "text",
-    "created_at" timestamp with time zone DEFAULT "now"()
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
 );
 
 
-ALTER TABLE "public"."rate_con_clauses" OWNER TO "supabase_admin";
+ALTER TABLE "public"."risk_clauses" OWNER TO "supabase_admin";
 
 
-CREATE TABLE IF NOT EXISTS "public"."rate_cons" (
+CREATE TABLE IF NOT EXISTS "public"."stops" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "organization_id" "uuid" NOT NULL,
-    "broker_name" "text",
-    "broker_mc_number" "text",
-    "load_id" "text",
-    "carrier_name" "text",
-    "carrier_mc_number" "text",
-    "pickup_address" "text",
-    "pickup_date" "date",
-    "pickup_time" time without time zone,
-    "delivery_address" "text",
-    "delivery_date" "date",
-    "delivery_time" time without time zone,
-    "rate_amount" numeric,
-    "commodity" "text",
-    "weight" numeric,
-    "detention_limit" numeric,
-    "detention_amount_per_hour" numeric,
-    "fine_amount" numeric,
-    "fine_description" "text",
-    "contacts" "jsonb",
-    "notes" "text",
-    "instructions" "text",
-    "parsed_text" "text",
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "rate_amount_raw" "text",
-    "weight_raw" "text",
-    "detention_limit_raw" "text",
-    "detention_amount_per_hour_raw" "text",
-    "fine_amount_raw" "text",
-    "status" "public"."rate_con_status" DEFAULT 'under_review'::"public"."rate_con_status" NOT NULL,
-    "overall_traffic_light" "text"
+    "rate_confirmation_id" "uuid" NOT NULL,
+    "sequence_number" integer NOT NULL,
+    "stop_type" "public"."stop_type_enum" NOT NULL,
+    "address" "text",
+    "contact_person" character varying(255),
+    "phone" character varying(50),
+    "email" character varying(255),
+    "scheduled_arrival" timestamp with time zone,
+    "scheduled_departure" timestamp with time zone,
+    "date_raw" character varying(50),
+    "time_raw" character varying(50),
+    "special_instructions" "text",
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
 );
 
 
-ALTER TABLE "public"."rate_cons" OWNER TO "postgres";
+ALTER TABLE "public"."stops" OWNER TO "supabase_admin";
 
 
 CREATE TABLE IF NOT EXISTS "public"."trips" (
@@ -801,6 +894,16 @@ ALTER TABLE ONLY "public"."audit_log"
 
 
 
+ALTER TABLE ONLY "public"."charges"
+    ADD CONSTRAINT "charges_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."clause_notifications"
+    ADD CONSTRAINT "clause_notifications_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."document_audit_log"
     ADD CONSTRAINT "document_audit_log_pkey" PRIMARY KEY ("id");
 
@@ -856,13 +959,23 @@ ALTER TABLE ONLY "public"."profiles"
 
 
 
-ALTER TABLE ONLY "public"."rate_con_clauses"
-    ADD CONSTRAINT "rate_con_clauses_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."rate_confirmations"
+    ADD CONSTRAINT "rate_confirmations_pkey" PRIMARY KEY ("id");
 
 
 
-ALTER TABLE ONLY "public"."rate_cons"
-    ADD CONSTRAINT "rate_cons_pkey" PRIMARY KEY ("id");
+ALTER TABLE ONLY "public"."reference_numbers"
+    ADD CONSTRAINT "reference_numbers_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."risk_clauses"
+    ADD CONSTRAINT "risk_clauses_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."stops"
+    ADD CONSTRAINT "stops_pkey" PRIMARY KEY ("id");
 
 
 
@@ -910,6 +1023,14 @@ CREATE INDEX "idx_audit_org" ON "public"."audit_log" USING "btree" ("organizatio
 
 
 CREATE INDEX "idx_audit_user" ON "public"."audit_log" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_charges_rate_con" ON "public"."charges" USING "btree" ("rate_confirmation_id");
+
+
+
+CREATE INDEX "idx_clause_notifications_risk_clause" ON "public"."clause_notifications" USING "btree" ("risk_clause_id");
 
 
 
@@ -965,6 +1086,34 @@ CREATE INDEX "idx_profiles_phone" ON "public"."profiles" USING "btree" ("phone_n
 
 
 
+CREATE INDEX "idx_rate_confirmations_doc" ON "public"."rate_confirmations" USING "btree" ("document_id");
+
+
+
+CREATE INDEX "idx_rate_confirmations_org" ON "public"."rate_confirmations" USING "btree" ("organization_id");
+
+
+
+CREATE INDEX "idx_rate_confirmations_rate_con_id" ON "public"."rate_confirmations" USING "btree" ("rate_con_id");
+
+
+
+CREATE INDEX "idx_reference_numbers_rate_con" ON "public"."reference_numbers" USING "btree" ("rate_confirmation_id");
+
+
+
+CREATE INDEX "idx_risk_clauses_rate_con" ON "public"."risk_clauses" USING "btree" ("rate_confirmation_id");
+
+
+
+CREATE INDEX "idx_stops_rate_con" ON "public"."stops" USING "btree" ("rate_confirmation_id");
+
+
+
+CREATE INDEX "idx_stops_sequence" ON "public"."stops" USING "btree" ("rate_confirmation_id", "sequence_number");
+
+
+
 CREATE INDEX "idx_trips_driver" ON "public"."trips" USING "btree" ("driver_id");
 
 
@@ -1017,6 +1166,10 @@ CREATE OR REPLACE TRIGGER "update_profiles_updated_at" BEFORE UPDATE ON "public"
 
 
 
+CREATE OR REPLACE TRIGGER "update_rate_confirmations_updated_at" BEFORE UPDATE ON "public"."rate_confirmations" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
 CREATE OR REPLACE TRIGGER "update_trips_updated_at" BEFORE UPDATE ON "public"."trips" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
 
 
@@ -1032,6 +1185,16 @@ ALTER TABLE ONLY "public"."audit_log"
 
 ALTER TABLE ONLY "public"."audit_log"
     ADD CONSTRAINT "audit_log_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."charges"
+    ADD CONSTRAINT "charges_rate_confirmation_id_fkey" FOREIGN KEY ("rate_confirmation_id") REFERENCES "public"."rate_confirmations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."clause_notifications"
+    ADD CONSTRAINT "clause_notifications_risk_clause_id_fkey" FOREIGN KEY ("risk_clause_id") REFERENCES "public"."risk_clauses"("id") ON DELETE CASCADE;
 
 
 
@@ -1150,13 +1313,28 @@ ALTER TABLE ONLY "public"."profiles"
 
 
 
-ALTER TABLE ONLY "public"."rate_con_clauses"
-    ADD CONSTRAINT "rate_con_clauses_rate_con_id_fkey" FOREIGN KEY ("rate_con_id") REFERENCES "public"."rate_cons"("id") ON DELETE CASCADE;
+ALTER TABLE ONLY "public"."rate_confirmations"
+    ADD CONSTRAINT "rate_confirmations_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE SET NULL;
 
 
 
-ALTER TABLE ONLY "public"."rate_cons"
-    ADD CONSTRAINT "rate_cons_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id");
+ALTER TABLE ONLY "public"."rate_confirmations"
+    ADD CONSTRAINT "rate_confirmations_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."reference_numbers"
+    ADD CONSTRAINT "reference_numbers_rate_confirmation_id_fkey" FOREIGN KEY ("rate_confirmation_id") REFERENCES "public"."rate_confirmations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."risk_clauses"
+    ADD CONSTRAINT "risk_clauses_rate_confirmation_id_fkey" FOREIGN KEY ("rate_confirmation_id") REFERENCES "public"."rate_confirmations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."stops"
+    ADD CONSTRAINT "stops_rate_confirmation_id_fkey" FOREIGN KEY ("rate_confirmation_id") REFERENCES "public"."rate_confirmations"("id") ON DELETE CASCADE;
 
 
 
@@ -1190,10 +1368,6 @@ CREATE POLICY "Drivers can manage own trips" ON "public"."trips" TO "authenticat
 
 
 CREATE POLICY "Drivers can update load status" ON "public"."loads" FOR UPDATE TO "authenticated" USING ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = 'driver'::"public"."user_role"))) WITH CHECK ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = 'driver'::"public"."user_role")));
-
-
-
-CREATE POLICY "Enable all access for authenticated users" ON "public"."rate_con_clauses" TO "authenticated" USING (true) WITH CHECK (true);
 
 
 
@@ -1241,17 +1415,81 @@ CREATE POLICY "System admins full access to profiles" ON "public"."profiles" TO 
 
 
 
+CREATE POLICY "Users can access own org charges" ON "public"."charges" USING (("rate_confirmation_id" IN ( SELECT "rate_confirmations"."id"
+   FROM "public"."rate_confirmations"
+  WHERE ("rate_confirmations"."organization_id" IN ( SELECT "profiles"."organization_id"
+           FROM "public"."profiles"
+          WHERE ("profiles"."id" = "auth"."uid"())))))) WITH CHECK (("rate_confirmation_id" IN ( SELECT "rate_confirmations"."id"
+   FROM "public"."rate_confirmations"
+  WHERE ("rate_confirmations"."organization_id" IN ( SELECT "profiles"."organization_id"
+           FROM "public"."profiles"
+          WHERE ("profiles"."id" = "auth"."uid"()))))));
+
+
+
+CREATE POLICY "Users can access own org clause notifications" ON "public"."clause_notifications" USING (("risk_clause_id" IN ( SELECT "rc"."id"
+   FROM ("public"."risk_clauses" "rc"
+     JOIN "public"."rate_confirmations" "r" ON (("rc"."rate_confirmation_id" = "r"."id")))
+  WHERE ("r"."organization_id" IN ( SELECT "profiles"."organization_id"
+           FROM "public"."profiles"
+          WHERE ("profiles"."id" = "auth"."uid"())))))) WITH CHECK (("risk_clause_id" IN ( SELECT "rc"."id"
+   FROM ("public"."risk_clauses" "rc"
+     JOIN "public"."rate_confirmations" "r" ON (("rc"."rate_confirmation_id" = "r"."id")))
+  WHERE ("r"."organization_id" IN ( SELECT "profiles"."organization_id"
+           FROM "public"."profiles"
+          WHERE ("profiles"."id" = "auth"."uid"()))))));
+
+
+
+CREATE POLICY "Users can access own org rate confirmations" ON "public"."rate_confirmations" USING (("organization_id" IN ( SELECT "profiles"."organization_id"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"())))) WITH CHECK (("organization_id" IN ( SELECT "profiles"."organization_id"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"()))));
+
+
+
+CREATE POLICY "Users can access own org reference numbers" ON "public"."reference_numbers" USING (("rate_confirmation_id" IN ( SELECT "rate_confirmations"."id"
+   FROM "public"."rate_confirmations"
+  WHERE ("rate_confirmations"."organization_id" IN ( SELECT "profiles"."organization_id"
+           FROM "public"."profiles"
+          WHERE ("profiles"."id" = "auth"."uid"())))))) WITH CHECK (("rate_confirmation_id" IN ( SELECT "rate_confirmations"."id"
+   FROM "public"."rate_confirmations"
+  WHERE ("rate_confirmations"."organization_id" IN ( SELECT "profiles"."organization_id"
+           FROM "public"."profiles"
+          WHERE ("profiles"."id" = "auth"."uid"()))))));
+
+
+
+CREATE POLICY "Users can access own org risk clauses" ON "public"."risk_clauses" USING (("rate_confirmation_id" IN ( SELECT "rate_confirmations"."id"
+   FROM "public"."rate_confirmations"
+  WHERE ("rate_confirmations"."organization_id" IN ( SELECT "profiles"."organization_id"
+           FROM "public"."profiles"
+          WHERE ("profiles"."id" = "auth"."uid"())))))) WITH CHECK (("rate_confirmation_id" IN ( SELECT "rate_confirmations"."id"
+   FROM "public"."rate_confirmations"
+  WHERE ("rate_confirmations"."organization_id" IN ( SELECT "profiles"."organization_id"
+           FROM "public"."profiles"
+          WHERE ("profiles"."id" = "auth"."uid"()))))));
+
+
+
+CREATE POLICY "Users can access own org stops" ON "public"."stops" USING (("rate_confirmation_id" IN ( SELECT "rate_confirmations"."id"
+   FROM "public"."rate_confirmations"
+  WHERE ("rate_confirmations"."organization_id" IN ( SELECT "profiles"."organization_id"
+           FROM "public"."profiles"
+          WHERE ("profiles"."id" = "auth"."uid"())))))) WITH CHECK (("rate_confirmation_id" IN ( SELECT "rate_confirmations"."id"
+   FROM "public"."rate_confirmations"
+  WHERE ("rate_confirmations"."organization_id" IN ( SELECT "profiles"."organization_id"
+           FROM "public"."profiles"
+          WHERE ("profiles"."id" = "auth"."uid"()))))));
+
+
+
 CREATE POLICY "Users can create documents" ON "public"."documents" FOR INSERT TO "authenticated" WITH CHECK (("organization_id" = "public"."get_user_organization_id"()));
 
 
 
 CREATE POLICY "Users can create expenses" ON "public"."expenses" FOR INSERT TO "authenticated" WITH CHECK (("organization_id" = "public"."get_user_organization_id"()));
-
-
-
-CREATE POLICY "Users can only access rate_cons for their organization" ON "public"."rate_cons" USING (("organization_id" IN ( SELECT "profiles"."organization_id"
-   FROM "public"."profiles"
-  WHERE ("profiles"."id" = "auth"."uid"()))));
 
 
 
@@ -1332,6 +1570,12 @@ CREATE POLICY "Users can view own organization" ON "public"."organizations" FOR 
 ALTER TABLE "public"."audit_log" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."charges" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."clause_notifications" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."document_audit_log" ENABLE ROW LEVEL SECURITY;
 
 
@@ -1368,14 +1612,20 @@ ALTER TABLE "public"."organizations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."rate_con_clauses" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."rate_confirmations" ENABLE ROW LEVEL SECURITY;
 
 
-ALTER TABLE "public"."rate_cons" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."reference_numbers" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."risk_clauses" ENABLE ROW LEVEL SECURITY;
 
 
 CREATE POLICY "server_audit_insert_policy" ON "public"."document_audit_log" FOR INSERT TO "authenticated" WITH CHECK (false);
 
+
+
+ALTER TABLE "public"."stops" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."trips" ENABLE ROW LEVEL SECURITY;
@@ -1394,10 +1644,6 @@ ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
 
 
 ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."notifications";
-
-
-
-ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."rate_cons";
 
 
 
@@ -2703,6 +2949,20 @@ GRANT ALL ON TABLE "public"."audit_log" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."charges" TO "postgres";
+GRANT ALL ON TABLE "public"."charges" TO "anon";
+GRANT ALL ON TABLE "public"."charges" TO "authenticated";
+GRANT ALL ON TABLE "public"."charges" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."clause_notifications" TO "postgres";
+GRANT ALL ON TABLE "public"."clause_notifications" TO "anon";
+GRANT ALL ON TABLE "public"."clause_notifications" TO "authenticated";
+GRANT ALL ON TABLE "public"."clause_notifications" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."document_audit_log" TO "anon";
 GRANT ALL ON TABLE "public"."document_audit_log" TO "authenticated";
 GRANT ALL ON TABLE "public"."document_audit_log" TO "service_role";
@@ -2763,16 +3023,31 @@ GRANT ALL ON TABLE "public"."profiles" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."rate_con_clauses" TO "postgres";
-GRANT ALL ON TABLE "public"."rate_con_clauses" TO "anon";
-GRANT ALL ON TABLE "public"."rate_con_clauses" TO "authenticated";
-GRANT ALL ON TABLE "public"."rate_con_clauses" TO "service_role";
+GRANT ALL ON TABLE "public"."rate_confirmations" TO "postgres";
+GRANT ALL ON TABLE "public"."rate_confirmations" TO "anon";
+GRANT ALL ON TABLE "public"."rate_confirmations" TO "authenticated";
+GRANT ALL ON TABLE "public"."rate_confirmations" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."rate_cons" TO "anon";
-GRANT ALL ON TABLE "public"."rate_cons" TO "authenticated";
-GRANT ALL ON TABLE "public"."rate_cons" TO "service_role";
+GRANT ALL ON TABLE "public"."reference_numbers" TO "postgres";
+GRANT ALL ON TABLE "public"."reference_numbers" TO "anon";
+GRANT ALL ON TABLE "public"."reference_numbers" TO "authenticated";
+GRANT ALL ON TABLE "public"."reference_numbers" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."risk_clauses" TO "postgres";
+GRANT ALL ON TABLE "public"."risk_clauses" TO "anon";
+GRANT ALL ON TABLE "public"."risk_clauses" TO "authenticated";
+GRANT ALL ON TABLE "public"."risk_clauses" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."stops" TO "postgres";
+GRANT ALL ON TABLE "public"."stops" TO "anon";
+GRANT ALL ON TABLE "public"."stops" TO "authenticated";
+GRANT ALL ON TABLE "public"."stops" TO "service_role";
 
 
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../data/models/rate_con_model.dart';
 import '../../services/rate_con_service.dart';
 import '../themes/app_theme.dart';
 import 'rate_con_clauses_screen.dart';
@@ -18,8 +19,7 @@ class RateConAnalysisScreen extends ConsumerStatefulWidget {
 class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
   final RateConService _service = RateConService();
   bool _isLoading = true;
-  String? _trafficLight; // RED, YELLOW, GREEN
-  String? _brokerName;
+  RateCon? _rateCon;
 
   @override
   void initState() {
@@ -31,9 +31,7 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
     try {
       final rateCon = await _service.getRateCon(widget.rateConId);
       setState(() {
-        _trafficLight =
-            rateCon.overallTrafficLight ?? 'YELLOW'; // Default to caution
-        _brokerName = rateCon.brokerName;
+        _rateCon = rateCon;
         _isLoading = false;
       });
     } catch (e) {
@@ -50,7 +48,10 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
       );
     }
 
-    final color = _getStatusColor(_trafficLight);
+    final trafficLight =
+        _rateCon?.overallTrafficLight ?? RateConTrafficLight.unknown;
+    final brokerName = _rateCon?.brokerName;
+    final color = _getStatusColor(trafficLight);
 
     return Scaffold(
       appBar: AppBar(
@@ -72,14 +73,14 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
                 border: Border.all(color: color, width: 4),
               ),
               child: Icon(
-                _getStatusIcon(_trafficLight),
+                _getStatusIcon(trafficLight),
                 size: 64,
                 color: color,
               ),
             ),
             const SizedBox(height: 16),
             Text(
-              _trafficLight?.toUpperCase() ?? 'UNKNOWN',
+              trafficLight.name.toUpperCase(),
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -88,7 +89,7 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'For ${_brokerName ?? "Broker"} Load',
+              'For ${brokerName ?? "Broker"} Load',
               style: TextStyle(color: Colors.grey.shade600),
             ),
 
@@ -97,21 +98,16 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
             // Action 1: View Clauses
             ElevatedButton.icon(
               onPressed: () async {
-                // Fetch clauses and navigate
-                try {
-                  final clauses = await _service.getClauses(widget.rateConId);
-                  if (!mounted) return;
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          RateConClausesScreen(clauses: clauses),
+                if (_rateCon == null) return;
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => RateConClausesScreen(
+                      clauses: _rateCon!.riskClauses,
+                      rateConId: widget.rateConId,
                     ),
-                  );
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to load clauses: $e')));
-                }
+                  ),
+                );
               },
               icon: const Icon(Icons.list_alt),
               label: const DualLanguageText(
@@ -122,7 +118,7 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
                 alignment: CrossAxisAlignment.center,
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: color, // Theme the button with status
+                backgroundColor: color,
                 foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 80),
                 padding: const EdgeInsets.symmetric(vertical: 12),
@@ -133,11 +129,12 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
             // Action 2: Review Information
             OutlinedButton.icon(
               onPressed: () {
-                Navigator.pushReplacement(
+                Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) =>
-                        RateConReviewScreen(rateConId: widget.rateConId),
+                    builder: (context) => RateConReviewScreen(
+                      rateConId: widget.rateConId,
+                    ),
                   ),
                 );
               },
@@ -161,28 +158,28 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
     );
   }
 
-  Color _getStatusColor(String? status) {
-    switch (status?.toUpperCase()) {
-      case 'RED':
+  Color _getStatusColor(RateConTrafficLight status) {
+    switch (status) {
+      case RateConTrafficLight.red:
         return Colors.red;
-      case 'YELLOW':
+      case RateConTrafficLight.yellow:
         return Colors.orange;
-      case 'GREEN':
+      case RateConTrafficLight.green:
         return Colors.green;
-      default:
+      case RateConTrafficLight.unknown:
         return Colors.grey;
     }
   }
 
-  IconData _getStatusIcon(String? status) {
-    switch (status?.toUpperCase()) {
-      case 'RED':
+  IconData _getStatusIcon(RateConTrafficLight status) {
+    switch (status) {
+      case RateConTrafficLight.red:
         return Icons.warning;
-      case 'YELLOW':
+      case RateConTrafficLight.yellow:
         return Icons.info;
-      case 'GREEN':
+      case RateConTrafficLight.green:
         return Icons.check_circle;
-      default:
+      case RateConTrafficLight.unknown:
         return Icons.help;
     }
   }

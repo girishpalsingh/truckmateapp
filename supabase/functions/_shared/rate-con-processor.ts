@@ -5,134 +5,216 @@ import { parseNumeric, parseTime, parseDate } from './utils.ts';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+/**
+ * Process Rate Confirmation data from Gemini and insert into normalized tables
+ */
 export async function processRateCon(
     documentId: string,
-    extractedData: any, // JSON object from LLM
+    extractedData: any,
     organizationId: string,
     userId?: string | null
 ) {
     console.log(`Processing Rate Con for Doc ID: ${documentId}, Org: ${organizationId}`);
+    console.log('Extracted Data:', JSON.stringify(extractedData, null, 2));
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // 1. Insert into rate_cons
-    // Map extractedData fields to table columns
-    // Note: LLM output keys might not match exactly, we should try to match flexibly or assume prompt exact match.
-    // The prompt `rate_con.ts` defines specific fields. We'll map them.
-
+    // 1. Insert into rate_confirmations (main table)
     const rateConData = {
+        rate_con_id: extractedData.rate_con_id || `RC-${Date.now()}`,
+        document_id: documentId,
         organization_id: organizationId,
 
-        broker_name: extractedData.broker_name || null,
-        broker_mc_number: extractedData.broker_mc_number || null,
-        load_id: extractedData.load_id || null,
+        // Broker Details
+        broker_name: extractedData.broker_details?.broker_name || null,
+        broker_mc_number: extractedData.broker_details?.broker_mc_number || null,
+        broker_address: extractedData.broker_details?.address || null,
+        broker_phone: extractedData.broker_details?.phone || null,
+        broker_email: extractedData.broker_details?.email || null,
 
-        carrier_name: extractedData.carrier_name || null,
-        carrier_mc_number: extractedData.carrier_mc_number || null,
+        // Carrier Details
+        carrier_name: extractedData.carrier_details?.carrier_name || null,
+        carrier_dot_number: extractedData.carrier_details?.carrier_dot_number || null,
+        carrier_address: extractedData.carrier_details?.address || null,
+        carrier_phone: extractedData.carrier_details?.phone || null,
+        carrier_email: extractedData.carrier_details?.email || null,
+        carrier_equipment_type: extractedData.carrier_details?.equipment_type || null,
+        carrier_equipment_number: extractedData.carrier_details?.equipment_number || null,
 
-        pickup_address: extractedData.pickup_address || null,
-        pickup_date: parseDate(extractedData.pickup_date),
-        pickup_time: parseTime(extractedData.pickup_time),
+        // Financials
+        total_rate_amount: parseNumeric(extractedData.financials?.total_rate_amount),
+        currency: extractedData.financials?.currency || 'USD',
+        payment_terms: extractedData.financials?.payment_terms || null,
 
-        delivery_address: extractedData.delivery_address || null,
-        delivery_date: parseDate(extractedData.delivery_date),
-        delivery_time: parseTime(extractedData.delivery_time),
+        // Commodity
+        commodity_name: extractedData.commodity_details?.commodity || null,
+        commodity_weight: parseNumeric(extractedData.commodity_details?.weight),
+        commodity_unit: extractedData.commodity_details?.unit || null,
+        pallet_count: extractedData.commodity_details?.pallet_count ? parseInt(String(extractedData.commodity_details.pallet_count)) : null,
 
-        rate_amount: parseNumeric(extractedData.rate_amount),
-        rate_amount_raw: extractedData.rate_amount ? String(extractedData.rate_amount) : null,
-        commodity: extractedData.commodity || null,
-        weight: parseNumeric(extractedData.weight),
-        weight_raw: extractedData.weight ? String(extractedData.weight) : null,
+        // Risk
+        overall_traffic_light: extractedData.risk_analysis?.overall_traffic_light || extractedData.overall_traffic_light || null,
 
-        detention_limit: parseNumeric(extractedData.detention_limit),
-        detention_limit_raw: extractedData.detention_limit ? String(extractedData.detention_limit) : null,
-        detention_amount_per_hour: parseNumeric(extractedData.detention_amount_per_hour),
-        detention_amount_per_hour_raw: extractedData.detention_amount_per_hour ? String(extractedData.detention_amount_per_hour) : null,
-
-        fine_amount: parseNumeric(extractedData.fine_amount),
-        fine_amount_raw: extractedData.fine_amount ? String(extractedData.fine_amount) : null,
-        fine_description: extractedData.fine_description || null,
-
-        contacts: extractedData.contacts ? extractedData.contacts : null,
-        notes: extractedData.notes || null,
-        instructions: extractedData.instructions || null,
-        parsed_text: JSON.stringify(extractedData),
-        overall_traffic_light: extractedData.overall_traffic_light || 'UNKNOWN',
+        status: 'under_review',
     };
 
-    console.log("Inserting Rate Con Data:", JSON.stringify(rateConData));
+    console.log("Inserting Rate Confirmation Data:", JSON.stringify(rateConData));
 
     const { data: rateCon, error: rateConError } = await supabase
-        .from('rate_cons')
+        .from('rate_confirmations')
         .insert(rateConData)
         .select()
         .single();
 
     if (rateConError) {
-        console.error("Error inserting rate_cons:", rateConError);
-        throw new Error(`Failed to insert rate con data: ${rateConError.message}`);
+        console.error("Error inserting rate_confirmations:", rateConError);
+        throw new Error(`Failed to insert rate confirmation: ${rateConError.message}`);
     }
 
-    console.log("Rate Con inserted:", rateCon.id);
+    console.log("Rate Confirmation inserted:", rateCon.id);
+    const rateConfirmationId = rateCon.id;
 
-    // 1.1 Insert Bad Clauses
-    if (extractedData.bad_clauses_found && Array.isArray(extractedData.bad_clauses_found) && extractedData.bad_clauses_found.length > 0) {
-        console.log(`Inserting ${extractedData.bad_clauses_found.length} clauses...`);
+    // 2. Insert Reference Numbers
+    if (extractedData.reference_numbers && Array.isArray(extractedData.reference_numbers)) {
+        console.log(`Inserting ${extractedData.reference_numbers.length} reference numbers...`);
 
-        const clausesData = extractedData.bad_clauses_found.map((clause: any) => ({
-            rate_con_id: rateCon.id,
-            clause_type: clause.clause_type,
-            traffic_light: clause.traffic_light,
-            clause_title: clause.clause_title,
-            clause_title_punjabi: clause.clause_title_punjabi,
-            danger_simple_language: clause.danger_simple_language,
-            danger_simple_punjabi: clause.danger_simple_punjabi,
-            original_text: clause.original_text,
-            notification_data: clause.notification,
-
-            // Map explicit notification fields
-            notification_title: clause.notification?.title || null,
-            notification_description: clause.notification?.description || null,
-            notification_trigger_type: clause.notification?.trigger_type || null,
-            notification_deadline: parseDate(clause.notification?.deadline_iso), // Ensure valid date
-            notification_relative_offset: clause.notification?.relative_minutes_offset ? parseInt(String(clause.notification.relative_minutes_offset)) : null,
-            notification_start_event: clause.notification?.notification_start_event || null
+        const refNumbersData = extractedData.reference_numbers.map((ref: any) => ({
+            rate_confirmation_id: rateConfirmationId,
+            ref_type: ref.type || null,
+            ref_value: ref.value || null,
         }));
 
-        const { error: clausesError } = await supabase
-            .from('rate_con_clauses')
-            .insert(clausesData);
+        const { error: refError } = await supabase
+            .from('reference_numbers')
+            .insert(refNumbersData);
 
-        if (clausesError) {
-            console.error("Error inserting clauses:", clausesError);
-            // Non-fatal, but good to know
+        if (refError) {
+            console.error("Error inserting reference_numbers:", refError);
         } else {
-            console.log("Clauses inserted successfully");
+            console.log("Reference numbers inserted successfully");
         }
     }
 
-    // 2. Create Notification using shared service
+    // 3. Insert Stops
+    if (extractedData.stops && Array.isArray(extractedData.stops)) {
+        console.log(`Inserting ${extractedData.stops.length} stops...`);
+
+        const stopsData = extractedData.stops.map((stop: any, index: number) => ({
+            rate_confirmation_id: rateConfirmationId,
+            sequence_number: index + 1,
+            stop_type: stop.stop_type === 'Pickup' ? 'Pickup' : 'Delivery',
+            address: stop.address || null,
+            contact_person: stop.contact_person || null,
+            phone: stop.phone || null,
+            email: stop.email || null,
+            scheduled_arrival: parseDate(stop.scheduled_arrival),
+            scheduled_departure: parseDate(stop.scheduled_departure),
+            date_raw: stop.date || null,
+            time_raw: stop.time || null,
+            special_instructions: stop.special_instructions || null,
+        }));
+
+        const { error: stopsError } = await supabase
+            .from('stops')
+            .insert(stopsData);
+
+        if (stopsError) {
+            console.error("Error inserting stops:", stopsError);
+        } else {
+            console.log("Stops inserted successfully");
+        }
+    }
+
+    // 4. Insert Charges
+    if (extractedData.financials?.charges && Array.isArray(extractedData.financials.charges)) {
+        console.log(`Inserting ${extractedData.financials.charges.length} charges...`);
+
+        const chargesData = extractedData.financials.charges.map((charge: any) => ({
+            rate_confirmation_id: rateConfirmationId,
+            description: charge.description || null,
+            amount: parseNumeric(charge.amount),
+        }));
+
+        const { error: chargesError } = await supabase
+            .from('charges')
+            .insert(chargesData);
+
+        if (chargesError) {
+            console.error("Error inserting charges:", chargesError);
+        } else {
+            console.log("Charges inserted successfully");
+        }
+    }
+
+    // 5. Insert Risk Clauses and their Notifications
+    const clausesFound = extractedData.risk_analysis?.clauses_found || extractedData.clauses_found || extractedData.bad_clauses_found;
+
+    if (clausesFound && Array.isArray(clausesFound) && clausesFound.length > 0) {
+        console.log(`Inserting ${clausesFound.length} risk clauses...`);
+
+        for (const clause of clausesFound) {
+            // Insert risk clause
+            const clauseData = {
+                rate_confirmation_id: rateConfirmationId,
+                clause_type: clause.clause_type || null,
+                traffic_light: clause.traffic_light || 'YELLOW',
+                clause_title: clause.clause_title || null,
+                clause_title_punjabi: clause.clause_title_punjabi || null,
+                danger_simple_language: clause.danger_simple_language || null,
+                danger_simple_punjabi: clause.danger_simple_punjabi || null,
+                original_text: clause.original_text || null,
+            };
+
+            const { data: riskClause, error: clauseError } = await supabase
+                .from('risk_clauses')
+                .insert(clauseData)
+                .select()
+                .single();
+
+            if (clauseError) {
+                console.error("Error inserting risk clause:", clauseError);
+                continue;
+            }
+
+            // Insert notification if present
+            if (clause.notification) {
+                const notificationData = {
+                    risk_clause_id: riskClause.id,
+                    title: clause.notification.title || null,
+                    description: clause.notification.description || null,
+                    trigger_type: clause.notification.trigger_type || null,
+                    start_event: clause.notification.notification_start_event || null,
+                    deadline_iso: parseDate(clause.notification.deadline_iso),
+                    relative_minutes_offset: clause.notification.relative_minutes_offset
+                        ? parseInt(String(clause.notification.relative_minutes_offset))
+                        : null,
+                    original_clause_excerpt: clause.notification.original_clause || null,
+                };
+
+                const { error: notifError } = await supabase
+                    .from('clause_notifications')
+                    .insert(notificationData);
+
+                if (notifError) {
+                    console.error("Error inserting clause notification:", notifError);
+                }
+            }
+        }
+        console.log("Risk clauses and notifications inserted successfully");
+    }
+
+    // 6. Create user notification about new rate con
     const notificationService = new NotificationService(supabase);
 
     await notificationService.sendNotification({
-        userId: userId || undefined, // undefined falls back to org (or we might want explicit null handling in service)
-        // Actually based on my service logic: user_id: params.userId (can be null)
-        // If I pass null here, it goes as null to DB -> Global Org Notification
-        // If I want to restrict to JUST this user, I should ensure userId is passed.
-        // If userId is null (legacy/system upload?), maybe it SHOULD be org wide?
-        // Plan said: "Target notifications to the specific user".
-        // Implementation: RLS restricts org-wide view if user_id is null?
-        // My RLS: user_id IS NULL (Global) OR user_id = auth.uid()
-        // So if userId is null, everyone sees it.
-        // If userId is provided, ONLY that user sees it.
-        // Perfect.
+        userId: userId || undefined,
         organizationId: organizationId,
         title: "New Rate Confirmation",
-        body: `Rate Con from ${rateConData.broker_name || 'Unknown Broker'} is ready for review.`,
+        body: `Rate Con ${rateConData.rate_con_id} from ${rateConData.broker_name || 'Unknown Broker'} is ready for review.`,
         data: {
-            rate_con_id: rateCon.id,
+            rate_confirmation_id: rateConfirmationId,
             document_id: documentId,
-            traffic_light: extractedData.overall_traffic_light || 'UNKNOWN',
+            traffic_light: rateConData.overall_traffic_light || 'UNKNOWN',
         },
         type: 'rate_con_review'
     });

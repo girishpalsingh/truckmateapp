@@ -618,15 +618,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
               // Navigate based on type
               if (notification.data['type'] == 'rate_con_review') {
-                // Assuming RateConAnalysisScreen exists and takes rateConId
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => RateConAnalysisScreen(
-                      rateConId: notification.data['rate_con_id'],
+                // Try both old and new key names for backwards compatibility
+                final rateConId = notification.data['rate_confirmation_id'] ??
+                    notification.data['rate_con_id'];
+                if (rateConId != null) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => RateConAnalysisScreen(
+                        rateConId: rateConId.toString(),
+                      ),
                     ),
-                  ),
-                );
+                  );
+                } else {
+                  // Fallback to notification screen if no rate con ID
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const NotificationScreen(),
+                    ),
+                  );
+                }
               } else {
                 Navigator.push(
                   context,

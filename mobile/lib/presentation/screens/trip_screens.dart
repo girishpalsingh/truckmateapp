@@ -4,9 +4,19 @@ import '../themes/app_theme.dart';
 import '../../services/trip_service.dart';
 import '../../core/utils/user_utils.dart';
 
+/// Alias for NewTripScreen when creating from rate con
+typedef CreateTripScreen = NewTripScreen;
+
 /// New Trip Screen
 class NewTripScreen extends ConsumerStatefulWidget {
-  const NewTripScreen({super.key});
+  final String? originAddress;
+  final String? destinationAddress;
+
+  const NewTripScreen({
+    super.key,
+    this.originAddress,
+    this.destinationAddress,
+  });
 
   @override
   ConsumerState<NewTripScreen> createState() => _NewTripScreenState();
@@ -14,11 +24,19 @@ class NewTripScreen extends ConsumerStatefulWidget {
 
 class _NewTripScreenState extends ConsumerState<NewTripScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _originController = TextEditingController();
-  final _destinationController = TextEditingController();
+  late final TextEditingController _originController;
+  late final TextEditingController _destinationController;
   final _odometerController = TextEditingController();
   final TripService _tripService = TripService();
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _originController = TextEditingController(text: widget.originAddress);
+    _destinationController =
+        TextEditingController(text: widget.destinationAddress);
+  }
 
   @override
   void dispose() {
@@ -33,13 +51,15 @@ class _NewTripScreenState extends ConsumerState<NewTripScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Get organization ID from persistence using centralized utility
+      // Get organization ID and user ID from persistence using centralized utility
       final organizationId = await UserUtils.getUserOrganization();
-      if (organizationId == null) {
+      final userId = await UserUtils.getUserId();
+
+      if (organizationId == null || userId == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('No organization found. Please log in again.'),
+              content: Text('Session expired. Please log in again.'),
               backgroundColor: Colors.red,
             ),
           );
@@ -50,20 +70,46 @@ class _NewTripScreenState extends ConsumerState<NewTripScreen> {
 
       await _tripService.createTrip(
         organizationId: organizationId,
+        driverId: userId, // Required for RLS policy
         originAddress: _originController.text,
         destinationAddress: _destinationController.text,
         odometerStart: int.parse(_odometerController.text),
       );
-      if (mounted) Navigator.pushReplacementNamed(context, '/dashboard');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Trip started successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Navigate to active trip screen or dashboard
+        Navigator.pushReplacementNamed(context, '/dashboard');
+      }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      debugPrint('Error creating trip: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start trip: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final hasPrefilledData =
+        widget.originAddress != null || widget.destinationAddress != null;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Start New Trip')),
+      appBar: AppBar(
+        title: Text(
+            hasPrefilledData ? 'Create Trip from Rate Con' : 'Start New Trip'),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
@@ -71,6 +117,29 @@ class _NewTripScreenState extends ConsumerState<NewTripScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (hasPrefilledData) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Colors.green),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Pre-filled from Rate Confirmation',
+                          style: TextStyle(color: Colors.green),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               TextFormField(
                 controller: _originController,
                 decoration: const InputDecoration(
