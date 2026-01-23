@@ -73,6 +73,28 @@ CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA "public";
 
 
 
+CREATE TYPE "public"."dispatch_assignment_status_enum" AS ENUM (
+    'ACTIVE',
+    'COMPLETED',
+    'CANCELLED'
+);
+
+
+ALTER TYPE "public"."dispatch_assignment_status_enum" OWNER TO "supabase_admin";
+
+
+CREATE TYPE "public"."dispatch_event_type_enum" AS ENUM (
+    'SHEET_GENERATED',
+    'SHEET_SENT_APP',
+    'SHEET_VIEWED',
+    'ACKNOWLEDGED',
+    'REFUSED'
+);
+
+
+ALTER TYPE "public"."dispatch_event_type_enum" OWNER TO "supabase_admin";
+
+
 CREATE TYPE "public"."document_status" AS ENUM (
     'pending_review',
     'approved',
@@ -173,6 +195,37 @@ CREATE TYPE "public"."traffic_light_status" AS ENUM (
 ALTER TYPE "public"."traffic_light_status" OWNER TO "supabase_admin";
 
 
+CREATE TYPE "public"."trailer_door_type_enum" AS ENUM (
+    'SWING',
+    'ROLL_UP'
+);
+
+
+ALTER TYPE "public"."trailer_door_type_enum" OWNER TO "supabase_admin";
+
+
+CREATE TYPE "public"."trailer_status_enum" AS ENUM (
+    'ACTIVE',
+    'MAINTENANCE',
+    'SOLD'
+);
+
+
+ALTER TYPE "public"."trailer_status_enum" OWNER TO "supabase_admin";
+
+
+CREATE TYPE "public"."trailer_type_enum" AS ENUM (
+    'DRY_VAN',
+    'REEFER',
+    'FLATBED',
+    'STEP_DECK',
+    'POWER_ONLY'
+);
+
+
+ALTER TYPE "public"."trailer_type_enum" OWNER TO "supabase_admin";
+
+
 CREATE TYPE "public"."trigger_type_enum" AS ENUM (
     'Absolute',
     'Relative',
@@ -193,6 +246,16 @@ CREATE TYPE "public"."trip_status" AS ENUM (
 ALTER TYPE "public"."trip_status" OWNER TO "postgres";
 
 
+CREATE TYPE "public"."truck_status_enum" AS ENUM (
+    'ACTIVE',
+    'MAINTENANCE',
+    'SOLD'
+);
+
+
+ALTER TYPE "public"."truck_status_enum" OWNER TO "supabase_admin";
+
+
 CREATE TYPE "public"."user_role" AS ENUM (
     'systemadmin',
     'orgadmin',
@@ -204,6 +267,61 @@ CREATE TYPE "public"."user_role" AS ENUM (
 
 
 ALTER TYPE "public"."user_role" OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."approve_rate_con_and_create_load"("rate_con_uuid" "uuid", "edits" "jsonb" DEFAULT '{}'::"jsonb") RETURNS "uuid"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    rc RECORD;
+    new_load_id UUID;
+BEGIN
+    -- 1. Get the rate confirmation details
+    SELECT * INTO rc FROM rate_confirmations WHERE id = rate_con_uuid;
+    
+    IF rc IS NULL THEN
+        RAISE EXCEPTION 'Rate confirmation not found';
+    END IF;
+
+    -- 2. Update status to approved
+    UPDATE rate_confirmations 
+    SET status = 'approved', updated_at = NOW()
+    WHERE id = rate_con_uuid;
+
+    -- 3. Create the Load
+    INSERT INTO loads (
+        organization_id,
+        broker_name,
+        broker_mc_number,
+        broker_load_id,
+        primary_rate,
+        payment_terms,
+        commodity_type,
+        weight_lbs,
+        status,
+        created_at,
+        updated_at
+    ) VALUES (
+        rc.organization_id,
+        rc.broker_name,
+        rc.broker_mc_number,
+        rc.rate_con_id,
+        rc.total_rate_amount,  -- FIXED: Changed from total_amount to total_rate_amount
+        rc.payment_terms,
+        rc.commodity_name,
+        rc.commodity_weight,
+        'assigned',
+        NOW(),
+        NOW()
+    )
+    RETURNING id INTO new_load_id;
+    
+    RETURN new_load_id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."approve_rate_con_and_create_load"("rate_con_uuid" "uuid", "edits" "jsonb") OWNER TO "supabase_admin";
 
 
 CREATE OR REPLACE FUNCTION "public"."calculate_trip_profit"("trip_uuid" "uuid") RETURNS TABLE("revenue" numeric, "expenses" numeric, "detention_revenue" numeric, "net_profit" numeric, "profit_margin" numeric)
@@ -524,6 +642,37 @@ CREATE TABLE IF NOT EXISTS "public"."clause_notifications" (
 ALTER TABLE "public"."clause_notifications" OWNER TO "supabase_admin";
 
 
+CREATE TABLE IF NOT EXISTS "public"."dispatch_assignments" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "load_id" "uuid" NOT NULL,
+    "organization_id" "uuid" NOT NULL,
+    "driver_id" "uuid",
+    "co_driver_id" "uuid",
+    "truck_id" "uuid",
+    "trailer_id" "uuid",
+    "dispatcher_user_id" "uuid",
+    "assigned_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    "status" "public"."dispatch_assignment_status_enum" DEFAULT 'ACTIVE'::"public"."dispatch_assignment_status_enum"
+);
+
+
+ALTER TABLE "public"."dispatch_assignments" OWNER TO "supabase_admin";
+
+
+CREATE TABLE IF NOT EXISTS "public"."dispatch_events" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "organization_id" "uuid" NOT NULL,
+    "load_id" "uuid" NOT NULL,
+    "driver_id" "uuid",
+    "event_type" "public"."dispatch_event_type_enum",
+    "meta_data" "jsonb",
+    "occurred_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE "public"."dispatch_events" OWNER TO "supabase_admin";
+
+
 CREATE TABLE IF NOT EXISTS "public"."document_audit_log" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "document_id" "uuid",
@@ -614,6 +763,26 @@ CREATE TABLE IF NOT EXISTS "public"."expenses" (
 ALTER TABLE "public"."expenses" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."facility_profiles" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "organization_id" "uuid" NOT NULL,
+    "normalized_name" character varying(255),
+    "address_hash" character varying(64),
+    "full_address" "text",
+    "access_notes_en" "text",
+    "access_notes_pb" "text",
+    "safety_requirements_en" "jsonb",
+    "safety_requirements_pb" "jsonb",
+    "amenities_en" "jsonb",
+    "amenities_pb" "jsonb",
+    "avg_dwell_time_minutes" integer,
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE "public"."facility_profiles" OWNER TO "supabase_admin";
+
+
 CREATE TABLE IF NOT EXISTS "public"."ifta_reports" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "organization_id" "uuid" NOT NULL,
@@ -660,6 +829,29 @@ CREATE TABLE IF NOT EXISTS "public"."invoices" (
 
 
 ALTER TABLE "public"."invoices" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."load_dispatch_config" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "organization_id" "uuid" NOT NULL,
+    "load_id" "uuid" NOT NULL,
+    "fuel_plan" "jsonb",
+    "total_planned_miles" numeric(10,2),
+    "route_warnings_en" "text"[],
+    "route_warnings_pb" "text"[],
+    "driver_pickup_instructions_en" "text",
+    "driver_pickup_instructions_pb" "text",
+    "driver_delivery_instructions_en" "text",
+    "driver_delivery_instructions_pb" "text",
+    "special_handling_instructions_en" "text",
+    "special_handling_instructions_pb" "text",
+    "generated_sheet_url" "text",
+    "qr_code_payload" "text",
+    "updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE "public"."load_dispatch_config" OWNER TO "supabase_admin";
 
 
 CREATE TABLE IF NOT EXISTS "public"."loads" (
@@ -752,6 +944,25 @@ COMMENT ON COLUMN "public"."profiles"."is_active" IS 'Whether the user account i
 
 
 
+CREATE TABLE IF NOT EXISTS "public"."rate_con_dispatcher_instructions" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "rate_confirmation_id" "uuid" NOT NULL,
+    "organization_id" "uuid" NOT NULL,
+    "title_en" "text",
+    "title_punjab" "text",
+    "description_en" "text",
+    "description_punjab" "text",
+    "trigger_type" character varying(50),
+    "deadline_iso" timestamp with time zone,
+    "relative_minutes_offset" integer,
+    "original_clause" "text",
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE "public"."rate_con_dispatcher_instructions" OWNER TO "supabase_admin";
+
+
 CREATE TABLE IF NOT EXISTS "public"."rate_confirmations" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "rate_con_id" character varying(50) NOT NULL,
@@ -836,6 +1047,36 @@ CREATE TABLE IF NOT EXISTS "public"."stops" (
 ALTER TABLE "public"."stops" OWNER TO "supabase_admin";
 
 
+CREATE TABLE IF NOT EXISTS "public"."trailers" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "organization_id" "uuid" NOT NULL,
+    "trailer_number" character varying(20) NOT NULL,
+    "vin" character varying(17),
+    "license_plate" character varying(20),
+    "license_plate_state" character varying(2),
+    "length_feet" integer,
+    "width_inches" integer DEFAULT 102,
+    "height_inches" integer DEFAULT 110,
+    "max_weight_lbs" integer DEFAULT 45000,
+    "trailer_type" "public"."trailer_type_enum",
+    "door_type" "public"."trailer_door_type_enum",
+    "floor_type" character varying(20) DEFAULT 'WOOD'::character varying,
+    "has_e_track" boolean DEFAULT false,
+    "is_food_grade" boolean DEFAULT false,
+    "reefer_unit_make" character varying(50),
+    "reefer_engine_hours" numeric(10,1),
+    "status" "public"."trailer_status_enum" DEFAULT 'ACTIVE'::"public"."trailer_status_enum",
+    "current_location_lat" numeric(9,6),
+    "current_location_lng" numeric(9,6),
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "trailers_length_feet_check" CHECK (("length_feet" = ANY (ARRAY[28, 48, 53])))
+);
+
+
+ALTER TABLE "public"."trailers" OWNER TO "supabase_admin";
+
+
 CREATE TABLE IF NOT EXISTS "public"."trips" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "organization_id" "uuid" NOT NULL,
@@ -882,7 +1123,15 @@ CREATE TABLE IF NOT EXISTS "public"."trucks" (
     "license_plate" "text",
     "current_odometer" integer DEFAULT 0,
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "license_plate_state" character varying(2),
+    "fuel_type" character varying(20) DEFAULT 'DIESEL'::character varying,
+    "is_carb_compliant" boolean DEFAULT false,
+    "has_sleeper" boolean DEFAULT true,
+    "eld_device_id" character varying(50),
+    "status" "public"."truck_status_enum" DEFAULT 'ACTIVE'::"public"."truck_status_enum",
+    "current_location_lat" numeric(9,6),
+    "current_location_lng" numeric(9,6)
 );
 
 
@@ -901,6 +1150,21 @@ ALTER TABLE ONLY "public"."charges"
 
 ALTER TABLE ONLY "public"."clause_notifications"
     ADD CONSTRAINT "clause_notifications_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."dispatch_assignments"
+    ADD CONSTRAINT "dispatch_assignments_load_id_status_key" UNIQUE ("load_id", "status");
+
+
+
+ALTER TABLE ONLY "public"."dispatch_assignments"
+    ADD CONSTRAINT "dispatch_assignments_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."dispatch_events"
+    ADD CONSTRAINT "dispatch_events_pkey" PRIMARY KEY ("id");
 
 
 
@@ -924,6 +1188,11 @@ ALTER TABLE ONLY "public"."expenses"
 
 
 
+ALTER TABLE ONLY "public"."facility_profiles"
+    ADD CONSTRAINT "facility_profiles_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."ifta_reports"
     ADD CONSTRAINT "ifta_reports_pkey" PRIMARY KEY ("id");
 
@@ -931,6 +1200,11 @@ ALTER TABLE ONLY "public"."ifta_reports"
 
 ALTER TABLE ONLY "public"."invoices"
     ADD CONSTRAINT "invoices_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."load_dispatch_config"
+    ADD CONSTRAINT "load_dispatch_config_pkey" PRIMARY KEY ("id");
 
 
 
@@ -959,6 +1233,11 @@ ALTER TABLE ONLY "public"."profiles"
 
 
 
+ALTER TABLE ONLY "public"."rate_con_dispatcher_instructions"
+    ADD CONSTRAINT "rate_con_dispatcher_instructions_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."rate_confirmations"
     ADD CONSTRAINT "rate_confirmations_pkey" PRIMARY KEY ("id");
 
@@ -976,6 +1255,16 @@ ALTER TABLE ONLY "public"."risk_clauses"
 
 ALTER TABLE ONLY "public"."stops"
     ADD CONSTRAINT "stops_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."trailers"
+    ADD CONSTRAINT "trailers_organization_id_trailer_number_key" UNIQUE ("organization_id", "trailer_number");
+
+
+
+ALTER TABLE ONLY "public"."trailers"
+    ADD CONSTRAINT "trailers_pkey" PRIMARY KEY ("id");
 
 
 
@@ -1198,6 +1487,56 @@ ALTER TABLE ONLY "public"."clause_notifications"
 
 
 
+ALTER TABLE ONLY "public"."dispatch_assignments"
+    ADD CONSTRAINT "dispatch_assignments_co_driver_id_fkey" FOREIGN KEY ("co_driver_id") REFERENCES "public"."profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."dispatch_assignments"
+    ADD CONSTRAINT "dispatch_assignments_dispatcher_user_id_fkey" FOREIGN KEY ("dispatcher_user_id") REFERENCES "public"."profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."dispatch_assignments"
+    ADD CONSTRAINT "dispatch_assignments_driver_id_fkey" FOREIGN KEY ("driver_id") REFERENCES "public"."profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."dispatch_assignments"
+    ADD CONSTRAINT "dispatch_assignments_load_id_fkey" FOREIGN KEY ("load_id") REFERENCES "public"."loads"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."dispatch_assignments"
+    ADD CONSTRAINT "dispatch_assignments_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."dispatch_assignments"
+    ADD CONSTRAINT "dispatch_assignments_trailer_id_fkey" FOREIGN KEY ("trailer_id") REFERENCES "public"."trailers"("id");
+
+
+
+ALTER TABLE ONLY "public"."dispatch_assignments"
+    ADD CONSTRAINT "dispatch_assignments_truck_id_fkey" FOREIGN KEY ("truck_id") REFERENCES "public"."trucks"("id");
+
+
+
+ALTER TABLE ONLY "public"."dispatch_events"
+    ADD CONSTRAINT "dispatch_events_driver_id_fkey" FOREIGN KEY ("driver_id") REFERENCES "public"."profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."dispatch_events"
+    ADD CONSTRAINT "dispatch_events_load_id_fkey" FOREIGN KEY ("load_id") REFERENCES "public"."loads"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."dispatch_events"
+    ADD CONSTRAINT "dispatch_events_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."document_audit_log"
     ADD CONSTRAINT "document_audit_log_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE SET NULL;
 
@@ -1258,6 +1597,11 @@ ALTER TABLE ONLY "public"."expenses"
 
 
 
+ALTER TABLE ONLY "public"."facility_profiles"
+    ADD CONSTRAINT "facility_profiles_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."organizations"
     ADD CONSTRAINT "fk_admin" FOREIGN KEY ("admin_id") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
 
@@ -1288,6 +1632,16 @@ ALTER TABLE ONLY "public"."invoices"
 
 
 
+ALTER TABLE ONLY "public"."load_dispatch_config"
+    ADD CONSTRAINT "load_dispatch_config_load_id_fkey" FOREIGN KEY ("load_id") REFERENCES "public"."loads"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."load_dispatch_config"
+    ADD CONSTRAINT "load_dispatch_config_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."loads"
     ADD CONSTRAINT "loads_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
 
@@ -1313,6 +1667,16 @@ ALTER TABLE ONLY "public"."profiles"
 
 
 
+ALTER TABLE ONLY "public"."rate_con_dispatcher_instructions"
+    ADD CONSTRAINT "rate_con_dispatcher_instructions_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."rate_con_dispatcher_instructions"
+    ADD CONSTRAINT "rate_con_dispatcher_instructions_rate_confirmation_id_fkey" FOREIGN KEY ("rate_confirmation_id") REFERENCES "public"."rate_confirmations"("id") ON DELETE CASCADE;
+
+
+
 ALTER TABLE ONLY "public"."rate_confirmations"
     ADD CONSTRAINT "rate_confirmations_document_id_fkey" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE SET NULL;
 
@@ -1335,6 +1699,11 @@ ALTER TABLE ONLY "public"."risk_clauses"
 
 ALTER TABLE ONLY "public"."stops"
     ADD CONSTRAINT "stops_rate_confirmation_id_fkey" FOREIGN KEY ("rate_confirmation_id") REFERENCES "public"."rate_confirmations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."trailers"
+    ADD CONSTRAINT "trailers_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
 
 
 
@@ -1375,6 +1744,10 @@ CREATE POLICY "Managers can delete org profiles" ON "public"."profiles" FOR DELE
 
 
 
+CREATE POLICY "Managers can insert dispatch events" ON "public"."dispatch_events" FOR INSERT TO "authenticated" WITH CHECK (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
 CREATE POLICY "Managers can insert profiles" ON "public"."profiles" FOR INSERT TO "authenticated" WITH CHECK ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"]))));
 
 
@@ -1383,11 +1756,31 @@ CREATE POLICY "Managers can manage IFTA reports" ON "public"."ifta_reports" TO "
 
 
 
+CREATE POLICY "Managers can manage dispatch assignments" ON "public"."dispatch_assignments" TO "authenticated" USING ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"]))));
+
+
+
+CREATE POLICY "Managers can manage facility profiles" ON "public"."facility_profiles" TO "authenticated" USING ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"]))));
+
+
+
 CREATE POLICY "Managers can manage invoices" ON "public"."invoices" TO "authenticated" USING ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'orgadmin'::"public"."user_role"])))) WITH CHECK ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'orgadmin'::"public"."user_role"]))));
 
 
 
+CREATE POLICY "Managers can manage load dispatch config" ON "public"."load_dispatch_config" TO "authenticated" USING ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"]))));
+
+
+
 CREATE POLICY "Managers can manage loads" ON "public"."loads" TO "authenticated" USING ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"])))) WITH CHECK ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"]))));
+
+
+
+CREATE POLICY "Managers can manage rate con instructions" ON "public"."rate_con_dispatcher_instructions" TO "authenticated" USING ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"]))));
+
+
+
+CREATE POLICY "Managers can manage trailers" ON "public"."trailers" TO "authenticated" USING ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"]))));
 
 
 
@@ -1529,6 +1922,14 @@ CREATE POLICY "Users can view org audit logs" ON "public"."audit_log" FOR SELECT
 
 
 
+CREATE POLICY "Users can view org dispatch assignments" ON "public"."dispatch_assignments" FOR SELECT TO "authenticated" USING (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
+CREATE POLICY "Users can view org dispatch events" ON "public"."dispatch_events" FOR SELECT TO "authenticated" USING (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
 CREATE POLICY "Users can view org document embeddings" ON "public"."document_embeddings" FOR SELECT TO "authenticated" USING (("document_id" IN ( SELECT "documents"."id"
    FROM "public"."documents"
   WHERE ("documents"."organization_id" = "public"."get_user_organization_id"()))));
@@ -1543,7 +1944,15 @@ CREATE POLICY "Users can view org expenses" ON "public"."expenses" FOR SELECT TO
 
 
 
+CREATE POLICY "Users can view org facility profiles" ON "public"."facility_profiles" FOR SELECT TO "authenticated" USING (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
 CREATE POLICY "Users can view org invoices" ON "public"."invoices" FOR SELECT TO "authenticated" USING (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
+CREATE POLICY "Users can view org load dispatch config" ON "public"."load_dispatch_config" FOR SELECT TO "authenticated" USING (("organization_id" = "public"."get_user_organization_id"()));
 
 
 
@@ -1552,6 +1961,14 @@ CREATE POLICY "Users can view org loads" ON "public"."loads" FOR SELECT TO "auth
 
 
 CREATE POLICY "Users can view org profiles" ON "public"."profiles" FOR SELECT TO "authenticated" USING (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
+CREATE POLICY "Users can view org rate con instructions" ON "public"."rate_con_dispatcher_instructions" FOR SELECT TO "authenticated" USING (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
+CREATE POLICY "Users can view org trailers" ON "public"."trailers" FOR SELECT TO "authenticated" USING (("organization_id" = "public"."get_user_organization_id"()));
 
 
 
@@ -1576,6 +1993,12 @@ ALTER TABLE "public"."charges" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."clause_notifications" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."dispatch_assignments" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."dispatch_events" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."document_audit_log" ENABLE ROW LEVEL SECURITY;
 
 
@@ -1588,10 +2011,16 @@ ALTER TABLE "public"."documents" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."expenses" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."facility_profiles" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."ifta_reports" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."invoices" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."load_dispatch_config" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."loads" ENABLE ROW LEVEL SECURITY;
@@ -1612,6 +2041,9 @@ ALTER TABLE "public"."organizations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."rate_con_dispatcher_instructions" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."rate_confirmations" ENABLE ROW LEVEL SECURITY;
 
 
@@ -1626,6 +2058,9 @@ CREATE POLICY "server_audit_insert_policy" ON "public"."document_audit_log" FOR 
 
 
 ALTER TABLE "public"."stops" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."trailers" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."trips" ENABLE ROW LEVEL SECURITY;
@@ -2090,6 +2525,13 @@ GRANT ALL ON FUNCTION "public"."vector"("public"."vector", integer, boolean) TO 
 
 
 
+
+
+
+GRANT ALL ON FUNCTION "public"."approve_rate_con_and_create_load"("rate_con_uuid" "uuid", "edits" "jsonb") TO "postgres";
+GRANT ALL ON FUNCTION "public"."approve_rate_con_and_create_load"("rate_con_uuid" "uuid", "edits" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."approve_rate_con_and_create_load"("rate_con_uuid" "uuid", "edits" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."approve_rate_con_and_create_load"("rate_con_uuid" "uuid", "edits" "jsonb") TO "service_role";
 
 
 
@@ -2963,6 +3405,20 @@ GRANT ALL ON TABLE "public"."clause_notifications" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."dispatch_assignments" TO "postgres";
+GRANT ALL ON TABLE "public"."dispatch_assignments" TO "anon";
+GRANT ALL ON TABLE "public"."dispatch_assignments" TO "authenticated";
+GRANT ALL ON TABLE "public"."dispatch_assignments" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."dispatch_events" TO "postgres";
+GRANT ALL ON TABLE "public"."dispatch_events" TO "anon";
+GRANT ALL ON TABLE "public"."dispatch_events" TO "authenticated";
+GRANT ALL ON TABLE "public"."dispatch_events" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."document_audit_log" TO "anon";
 GRANT ALL ON TABLE "public"."document_audit_log" TO "authenticated";
 GRANT ALL ON TABLE "public"."document_audit_log" TO "service_role";
@@ -2987,6 +3443,13 @@ GRANT ALL ON TABLE "public"."expenses" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."facility_profiles" TO "postgres";
+GRANT ALL ON TABLE "public"."facility_profiles" TO "anon";
+GRANT ALL ON TABLE "public"."facility_profiles" TO "authenticated";
+GRANT ALL ON TABLE "public"."facility_profiles" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."ifta_reports" TO "anon";
 GRANT ALL ON TABLE "public"."ifta_reports" TO "authenticated";
 GRANT ALL ON TABLE "public"."ifta_reports" TO "service_role";
@@ -2996,6 +3459,13 @@ GRANT ALL ON TABLE "public"."ifta_reports" TO "service_role";
 GRANT ALL ON TABLE "public"."invoices" TO "anon";
 GRANT ALL ON TABLE "public"."invoices" TO "authenticated";
 GRANT ALL ON TABLE "public"."invoices" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."load_dispatch_config" TO "postgres";
+GRANT ALL ON TABLE "public"."load_dispatch_config" TO "anon";
+GRANT ALL ON TABLE "public"."load_dispatch_config" TO "authenticated";
+GRANT ALL ON TABLE "public"."load_dispatch_config" TO "service_role";
 
 
 
@@ -3020,6 +3490,13 @@ GRANT ALL ON TABLE "public"."organizations" TO "service_role";
 GRANT ALL ON TABLE "public"."profiles" TO "anon";
 GRANT ALL ON TABLE "public"."profiles" TO "authenticated";
 GRANT ALL ON TABLE "public"."profiles" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."rate_con_dispatcher_instructions" TO "postgres";
+GRANT ALL ON TABLE "public"."rate_con_dispatcher_instructions" TO "anon";
+GRANT ALL ON TABLE "public"."rate_con_dispatcher_instructions" TO "authenticated";
+GRANT ALL ON TABLE "public"."rate_con_dispatcher_instructions" TO "service_role";
 
 
 
@@ -3048,6 +3525,13 @@ GRANT ALL ON TABLE "public"."stops" TO "postgres";
 GRANT ALL ON TABLE "public"."stops" TO "anon";
 GRANT ALL ON TABLE "public"."stops" TO "authenticated";
 GRANT ALL ON TABLE "public"."stops" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."trailers" TO "postgres";
+GRANT ALL ON TABLE "public"."trailers" TO "anon";
+GRANT ALL ON TABLE "public"."trailers" TO "authenticated";
+GRANT ALL ON TABLE "public"."trailers" TO "service_role";
 
 
 
