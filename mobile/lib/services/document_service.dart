@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/utils/app_logger.dart';
 
 /// Service for managing documents
 class DocumentService {
@@ -16,17 +17,23 @@ class DocumentService {
     required Uint8List imageBytes,
     required String fileName,
   }) async {
-    final folder = (tripId != null && tripId.isNotEmpty) ? tripId : 'general';
-    final path =
-        '$organizationId/$folder/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+    AppLogger.i('DocumentService: Uploading document (type: $documentType)');
+    try {
+      final folder = (tripId != null && tripId.isNotEmpty) ? tripId : 'general';
+      final path =
+          '$organizationId/$folder/${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
-    await _client.storage.from('documents').uploadBinary(
-          path,
-          imageBytes,
-          fileOptions: const FileOptions(contentType: 'image/jpeg'),
-        );
+      await _client.storage.from('documents').uploadBinary(
+            path,
+            imageBytes,
+            fileOptions: const FileOptions(contentType: 'image/jpeg'),
+          );
 
-    return path;
+      return path;
+    } catch (e, stack) {
+      AppLogger.e('DocumentService: Error uploading document', e, stack);
+      rethrow;
+    }
   }
 
   /// Create a document record
@@ -39,24 +46,30 @@ class DocumentService {
     String? localTextExtraction,
     int pageCount = 1,
   }) async {
-    final Map<String, dynamic> data = {
-      'organization_id': organizationId,
-      'load_id': loadId,
-      'type': type,
-      'image_url': imageUrl,
-      'local_text_extraction': localTextExtraction,
-      'page_count': pageCount,
-      'status': 'pending_review',
-    };
+    AppLogger.i('DocumentService: Creating document record (type: $type)');
+    try {
+      final Map<String, dynamic> data = {
+        'organization_id': organizationId,
+        'load_id': loadId,
+        'type': type,
+        'image_url': imageUrl,
+        'local_text_extraction': localTextExtraction,
+        'page_count': pageCount,
+        'status': 'pending_review',
+      };
 
-    if (tripId != null && tripId.isNotEmpty) {
-      data['trip_id'] = tripId;
+      if (tripId != null && tripId.isNotEmpty) {
+        data['trip_id'] = tripId;
+      }
+
+      final response =
+          await _client.from('documents').insert(data).select().single();
+
+      return Document.fromJson(response);
+    } catch (e, stack) {
+      AppLogger.e('DocumentService: Error creating document record', e, stack);
+      rethrow;
     }
-
-    final response =
-        await _client.from('documents').insert(data).select().single();
-
-    return Document.fromJson(response);
   }
 
   /// Process document with LLM
@@ -66,40 +79,52 @@ class DocumentService {
     required String imageUrl,
     String? localExtraction,
   }) async {
-    final response = await _client.functions.invoke(
-      'process-document',
-      body: {
-        'document_id': documentId,
-        'document_type': documentType,
-        'image_url': imageUrl,
-        'local_extraction': localExtraction,
-      },
-    );
-
-    if (response.status != 200) {
-      return DocumentProcessResult(
-        success: false,
-        error: response.data?['error'] ?? 'Processing failed',
+    AppLogger.i('DocumentService: Processing document $documentId');
+    try {
+      final response = await _client.functions.invoke(
+        'process-document',
+        body: {
+          'document_id': documentId,
+          'document_type': documentType,
+          'image_url': imageUrl,
+          'local_extraction': localExtraction,
+        },
       );
-    }
 
-    return DocumentProcessResult(
-      success: true,
-      documentId: documentId,
-      extractedData: response.data?['extracted_data'],
-      confidence: (response.data?['confidence'] ?? 0).toDouble(),
-    );
+      if (response.status != 200) {
+        return DocumentProcessResult(
+          success: false,
+          error: response.data?['error'] ?? 'Processing failed',
+        );
+      }
+
+      return DocumentProcessResult(
+        success: true,
+        documentId: documentId,
+        extractedData: response.data?['extracted_data'],
+        confidence: (response.data?['confidence'] ?? 0).toDouble(),
+      );
+    } catch (e, stack) {
+      AppLogger.e('DocumentService: Error processing document', e, stack);
+      return DocumentProcessResult(success: false, error: e.toString());
+    }
   }
 
   /// Get documents for a trip
   Future<List<Document>> getTripDocuments(String tripId) async {
-    final response = await _client
-        .from('documents')
-        .select('*')
-        .eq('trip_id', tripId)
-        .order('created_at', ascending: false);
+    AppLogger.d('DocumentService: Fetching documents for trip $tripId');
+    try {
+      final response = await _client
+          .from('documents')
+          .select('*')
+          .eq('trip_id', tripId)
+          .order('created_at', ascending: false);
 
-    return (response as List).map((json) => Document.fromJson(json)).toList();
+      return (response as List).map((json) => Document.fromJson(json)).toList();
+    } catch (e, stack) {
+      AppLogger.e('DocumentService: Error fetching trip documents', e, stack);
+      rethrow;
+    }
   }
 
   /// Update document status
@@ -108,11 +133,18 @@ class DocumentService {
     String status, {
     String? reviewerId,
   }) async {
-    await _client.from('documents').update({
-      'status': status,
-      'reviewed_by': reviewerId,
-      'reviewed_at': DateTime.now().toIso8601String(),
-    }).eq('id', documentId);
+    AppLogger.i(
+        'DocumentService: Updating document status $documentId -> $status');
+    try {
+      await _client.from('documents').update({
+        'status': status,
+        'reviewed_by': reviewerId,
+        'reviewed_at': DateTime.now().toIso8601String(),
+      }).eq('id', documentId);
+    } catch (e, stack) {
+      AppLogger.e('DocumentService: Error updating document status', e, stack);
+      rethrow;
+    }
   }
 }
 

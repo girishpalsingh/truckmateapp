@@ -284,4 +284,24 @@ class RateCon {
   String get displayTotalRate => totalRateAmount != null
       ? '\$${totalRateAmount!.toStringAsFixed(2)}'
       : 'N/A';
+
+  /// Suggests an origin address based on the first pickup stop
+  String? get originAddress {
+    if (stops.isEmpty) return null;
+    try {
+      return stops.firstWhere((s) => s.stopType == StopType.pickup).address;
+    } catch (_) {
+      return stops.first.address;
+    }
+  }
+
+  /// Suggests a destination address based on the last delivery stop
+  String? get destinationAddress {
+    if (stops.isEmpty) return null;
+    try {
+      return stops.lastWhere((s) => s.stopType == StopType.delivery).address;
+    } catch (_) {
+      return stops.last.address;
+    }
+  }
 }

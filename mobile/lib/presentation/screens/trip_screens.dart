@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../themes/app_theme.dart';
 import '../../services/trip_service.dart';
+import '../../services/truck_service.dart';
+import '../../services/profile_service.dart';
+import '../../data/models/truck.dart';
+import '../../data/models/user_profile.dart';
+import '../../data/models/trip.dart';
 import '../../core/utils/user_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../themes/app_theme.dart';
 
 /// Alias for NewTripScreen when creating from rate con
 typedef CreateTripScreen = NewTripScreen;
@@ -13,12 +18,16 @@ class NewTripScreen extends ConsumerStatefulWidget {
   final String? originAddress;
   final String? destinationAddress;
   final String? loadId;
+  final String? brokerName;
+  final double? rate;
 
   const NewTripScreen({
     super.key,
     this.originAddress,
     this.destinationAddress,
     this.loadId,
+    this.brokerName,
+    this.rate,
   });
 
   @override
@@ -31,7 +40,15 @@ class _NewTripScreenState extends ConsumerState<NewTripScreen> {
   late final TextEditingController _destinationController;
   final _odometerController = TextEditingController();
   final TripService _tripService = TripService();
+  final TruckService _truckService = TruckService();
+  final ProfileService _profileService = ProfileService();
+
   bool _isLoading = false;
+  List<Truck> _trucks = [];
+  List<UserProfile> _drivers = [];
+  Truck? _selectedTruck;
+  UserProfile? _selectedDriver;
+  bool _isDataLoading = true;
 
   @override
   void initState() {
@@ -39,6 +56,50 @@ class _NewTripScreenState extends ConsumerState<NewTripScreen> {
     _originController = TextEditingController(text: widget.originAddress);
     _destinationController =
         TextEditingController(text: widget.destinationAddress);
+    _loadInitialData();
+  }
+
+  Future<void> _loadInitialData() async {
+    try {
+      final orgId = await UserUtils.getUserOrganization();
+      final currentUserId = await UserUtils.getUserId();
+
+      if (orgId != null) {
+        final results = await Future.wait([
+          _truckService.getTrucks(orgId),
+          _profileService.getProfilesByRole(orgId, 'driver'),
+        ]);
+
+        if (mounted) {
+          setState(() {
+            _trucks = results[0] as List<Truck>;
+            _drivers = results[1] as List<UserProfile>;
+
+            // Pre-select current driver
+            if (currentUserId != null) {
+              _selectedDriver = _drivers.firstWhere(
+                (d) => d.id == currentUserId,
+                orElse: () => _drivers.first,
+              );
+            } else if (_drivers.isNotEmpty) {
+              _selectedDriver = _drivers.first;
+            }
+
+            // Optional: Try to match truck if we had equipment info (could pass it in widget)
+            if (_trucks.isNotEmpty) {
+              _selectedTruck = _trucks.first;
+            }
+
+            _isDataLoading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isDataLoading = false);
+      }
+    } catch (e) {
+      debugPrint('Error loading initial data: $e');
+      if (mounted) setState(() => _isDataLoading = false);
+    }
   }
 
   @override
@@ -74,7 +135,8 @@ class _NewTripScreenState extends ConsumerState<NewTripScreen> {
       await _tripService.createTrip(
         organizationId: organizationId,
         loadId: widget.loadId,
-        driverId: userId, // Required for RLS policy
+        truckId: _selectedTruck?.id,
+        driverId: _selectedDriver?.id ?? userId,
         originAddress: _originController.text,
         destinationAddress: _destinationController.text,
         odometerStart: int.parse(_odometerController.text),
@@ -114,74 +176,163 @@ class _NewTripScreenState extends ConsumerState<NewTripScreen> {
         title: Text(
             hasPrefilledData ? 'Create Trip from Rate Con' : 'Start New Trip'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (hasPrefilledData) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.check_circle, color: Colors.green),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          'Pre-filled from Rate Confirmation',
-                          style: TextStyle(color: Colors.green),
+      body: _isDataLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (widget.loadId != null) ...[
+                      _buildLoadInfoCard(),
+                      const SizedBox(height: 16),
+                    ],
+                    if (hasPrefilledData) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border:
+                              Border.all(color: Colors.green.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle, color: Colors.green),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Pre-filled from Rate Confirmation',
+                                style: TextStyle(color: Colors.green),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
+
+                    // Truck Selector
+                    DropdownButtonFormField<Truck>(
+                      value: _selectedTruck,
+                      decoration: const InputDecoration(
+                        labelText: 'Select Truck',
+                        prefixIcon: Icon(Icons.local_shipping),
+                      ),
+                      items: _trucks.map((truck) {
+                        return DropdownMenuItem(
+                          value: truck,
+                          child: Text(truck.truckNumber),
+                        );
+                      }).toList(),
+                      onChanged: (val) => setState(() => _selectedTruck = val),
+                      validator: (val) => val == null ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Driver Selector
+                    DropdownButtonFormField<UserProfile>(
+                      value: _selectedDriver,
+                      decoration: const InputDecoration(
+                        labelText: 'Select Driver',
+                        prefixIcon: Icon(Icons.person),
+                      ),
+                      items: _drivers.map((driver) {
+                        return DropdownMenuItem(
+                          value: driver,
+                          child: Text(driver.fullName),
+                        );
+                      }).toList(),
+                      onChanged: (val) => setState(() => _selectedDriver = val),
+                      validator: (val) => val == null ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 16),
+
+                    TextFormField(
+                      controller: _originController,
+                      decoration: const InputDecoration(
+                        labelText: 'Origin',
+                        prefixIcon: Icon(Icons.location_on),
+                      ),
+                      validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _destinationController,
+                      decoration: const InputDecoration(
+                        labelText: 'Destination',
+                        prefixIcon: Icon(Icons.flag),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _odometerController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Odometer',
+                        prefixIcon: Icon(Icons.speed),
+                      ),
+                      validator: (v) => int.tryParse(v ?? '') == null
+                          ? 'Enter valid number'
+                          : null,
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      onPressed: _isLoading ? null : _startTrip,
+                      style: AppTheme.successButtonStyle,
+                      child: _isLoading
+                          ? const CircularProgressIndicator()
+                          : const Text('Start Trip'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildLoadInfoCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.assignment, size: 16, color: Colors.blue),
+                const SizedBox(width: 8),
+                Text(
+                  'Load Details',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade700,
                   ),
                 ),
               ],
-              TextFormField(
-                controller: _originController,
-                decoration: const InputDecoration(
-                  labelText: 'Origin',
-                  prefixIcon: Icon(Icons.location_on),
-                ),
-                validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _destinationController,
-                decoration: const InputDecoration(
-                  labelText: 'Destination',
-                  prefixIcon: Icon(Icons.flag),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _odometerController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Odometer',
-                  prefixIcon: Icon(Icons.speed),
-                ),
-                validator: (v) =>
-                    int.tryParse(v ?? '') == null ? 'Enter valid number' : null,
-              ),
-              const SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: _isLoading ? null : _startTrip,
-                style: AppTheme.successButtonStyle,
-                child: _isLoading
-                    ? const CircularProgressIndicator()
-                    : const Text('Start Trip'),
-              ),
-            ],
-          ),
+            ),
+            const Divider(),
+            if (widget.brokerName != null)
+              _buildInfoRow('Broker', widget.brokerName!),
+            if (widget.rate != null)
+              _buildInfoRow('Rate', '\$${widget.rate!.toStringAsFixed(2)}'),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+        ],
       ),
     );
   }
@@ -222,7 +373,8 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final url = await TripService().generateDispatcherSheet(_trip!.loadId!);
+      final url =
+          await TripService().generateDispatcherSheet(tripId: _trip!.id);
       debugPrint('Dispatcher Sheet URL: $url');
 
       final uri = Uri.parse(url);
@@ -413,7 +565,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
 
     try {
       final url =
-          await TripService().generateDispatcherSheet(widget.trip.loadId!);
+          await TripService().generateDispatcherSheet(tripId: widget.trip.id);
       debugPrint('Dispatcher Sheet URL: $url');
 
       final uri = Uri.parse(url);

@@ -21,6 +21,8 @@ async function handleSendOtp(
   phoneNumber: string
 ): Promise<Response> {
   // Check if user exists and is active
+  console.log("DEBUG: SUPABASE_URL Env:", Deno.env.get("SUPABASE_URL"));
+  console.log("DEBUG: Configured Supabase URL:", config.supabase.url);
   const { user, profile, error: userError } = await getUserByPhone(supabase, phoneNumber);
 
   if (userError) {
@@ -73,17 +75,23 @@ async function handleSendOtp(
   }
 
   // Send OTP
-  const { error } = await supabase.auth.signInWithOtp({
-    phone: phoneNumber,
-    options: {
-      shouldCreateUser: false,
-    }
-  });
+  if (config.development.enabled && config.development.skip_twilio) {
+    console.log(`[Dev] Skipping Twilio for ${phoneNumber}, assume default OTP.`);
+  } else {
+    const { error } = await supabase.auth.signInWithOtp({
+      phone: phoneNumber,
+      options: {
+        shouldCreateUser: false,
+      }
+    });
 
-  if (error) {
-    console.log(error);
-    throw error;
+    if (error) {
+      console.log(error);
+      throw error;
+    }
   }
+
+
 
   return new Response(
     JSON.stringify({ success: true, message: "OTP sent successfully" }),

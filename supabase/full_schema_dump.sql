@@ -872,7 +872,8 @@ CREATE TABLE IF NOT EXISTS "public"."loads" (
     "notes" "text",
     "status" "public"."load_status" DEFAULT 'assigned'::"public"."load_status",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "rate_confirmation_id" "uuid"
 );
 
 
@@ -990,7 +991,8 @@ CREATE TABLE IF NOT EXISTS "public"."rate_confirmations" (
     "overall_traffic_light" "public"."traffic_light_status",
     "status" character varying(20) DEFAULT 'under_review'::character varying,
     "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+    "updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    "driver_view_data" "jsonb"
 );
 
 
@@ -1077,6 +1079,20 @@ CREATE TABLE IF NOT EXISTS "public"."trailers" (
 ALTER TABLE "public"."trailers" OWNER TO "supabase_admin";
 
 
+CREATE TABLE IF NOT EXISTS "public"."trip_loads" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "trip_id" "uuid" NOT NULL,
+    "load_id" "uuid" NOT NULL,
+    "pickup_sequence" integer DEFAULT 1,
+    "delivery_sequence" integer DEFAULT 1,
+    "is_partial_segment" boolean DEFAULT false,
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
+
+
+ALTER TABLE "public"."trip_loads" OWNER TO "supabase_admin";
+
+
 CREATE TABLE IF NOT EXISTS "public"."trips" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "organization_id" "uuid" NOT NULL,
@@ -1105,7 +1121,8 @@ END) STORED,
     "notes" "text",
     "status" "public"."trip_status" DEFAULT 'active'::"public"."trip_status",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"()
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "dispatch_document_id" "uuid"
 );
 
 
@@ -1268,6 +1285,16 @@ ALTER TABLE ONLY "public"."trailers"
 
 
 
+ALTER TABLE ONLY "public"."trip_loads"
+    ADD CONSTRAINT "trip_loads_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."trip_loads"
+    ADD CONSTRAINT "trip_loads_trip_id_load_id_key" UNIQUE ("trip_id", "load_id");
+
+
+
 ALTER TABLE ONLY "public"."trips"
     ADD CONSTRAINT "trips_pkey" PRIMARY KEY ("id");
 
@@ -1363,6 +1390,10 @@ CREATE INDEX "idx_loads_org" ON "public"."loads" USING "btree" ("organization_id
 
 
 
+CREATE INDEX "idx_loads_rate_con" ON "public"."loads" USING "btree" ("rate_confirmation_id");
+
+
+
 CREATE INDEX "idx_loads_status" ON "public"."loads" USING "btree" ("status");
 
 
@@ -1400,6 +1431,14 @@ CREATE INDEX "idx_stops_rate_con" ON "public"."stops" USING "btree" ("rate_confi
 
 
 CREATE INDEX "idx_stops_sequence" ON "public"."stops" USING "btree" ("rate_confirmation_id", "sequence_number");
+
+
+
+CREATE INDEX "idx_trip_loads_load" ON "public"."trip_loads" USING "btree" ("load_id");
+
+
+
+CREATE INDEX "idx_trip_loads_trip" ON "public"."trip_loads" USING "btree" ("trip_id");
 
 
 
@@ -1647,6 +1686,11 @@ ALTER TABLE ONLY "public"."loads"
 
 
 
+ALTER TABLE ONLY "public"."loads"
+    ADD CONSTRAINT "loads_rate_confirmation_id_fkey" FOREIGN KEY ("rate_confirmation_id") REFERENCES "public"."rate_confirmations"("id") ON DELETE SET NULL;
+
+
+
 ALTER TABLE ONLY "public"."notifications"
     ADD CONSTRAINT "notifications_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id");
 
@@ -1707,6 +1751,21 @@ ALTER TABLE ONLY "public"."trailers"
 
 
 
+ALTER TABLE ONLY "public"."trip_loads"
+    ADD CONSTRAINT "trip_loads_load_id_fkey" FOREIGN KEY ("load_id") REFERENCES "public"."loads"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."trip_loads"
+    ADD CONSTRAINT "trip_loads_trip_id_fkey" FOREIGN KEY ("trip_id") REFERENCES "public"."trips"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."trips"
+    ADD CONSTRAINT "trips_dispatch_document_id_fkey" FOREIGN KEY ("dispatch_document_id") REFERENCES "public"."documents"("id") ON DELETE SET NULL;
+
+
+
 ALTER TABLE ONLY "public"."trips"
     ADD CONSTRAINT "trips_driver_id_fkey" FOREIGN KEY ("driver_id") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
 
@@ -1737,6 +1796,22 @@ CREATE POLICY "Drivers can manage own trips" ON "public"."trips" TO "authenticat
 
 
 CREATE POLICY "Drivers can update load status" ON "public"."loads" FOR UPDATE TO "authenticated" USING ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = 'driver'::"public"."user_role"))) WITH CHECK ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = 'driver'::"public"."user_role")));
+
+
+
+CREATE POLICY "Drivers/Managers can manage trip_loads" ON "public"."trip_loads" TO "authenticated" USING (("trip_id" IN ( SELECT "trips"."id"
+   FROM "public"."trips"
+  WHERE (("trips"."organization_id" IN ( SELECT "profiles"."organization_id"
+           FROM "public"."profiles"
+          WHERE ("profiles"."id" = "auth"."uid"()))) AND (("trips"."driver_id" = "auth"."uid"()) OR (EXISTS ( SELECT 1
+           FROM "public"."profiles"
+          WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"])))))))))) WITH CHECK (("trip_id" IN ( SELECT "trips"."id"
+   FROM "public"."trips"
+  WHERE (("trips"."organization_id" IN ( SELECT "profiles"."organization_id"
+           FROM "public"."profiles"
+          WHERE ("profiles"."id" = "auth"."uid"()))) AND (("trips"."driver_id" = "auth"."uid"()) OR (EXISTS ( SELECT 1
+           FROM "public"."profiles"
+          WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"]))))))))));
 
 
 
@@ -1886,6 +1961,10 @@ CREATE POLICY "Users can create expenses" ON "public"."expenses" FOR INSERT TO "
 
 
 
+CREATE POLICY "Users can create loads" ON "public"."loads" FOR INSERT TO "authenticated" WITH CHECK (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
 CREATE POLICY "Users can update notifications for their organization" ON "public"."notifications" FOR UPDATE USING (("organization_id" IN ( SELECT "profiles"."organization_id"
    FROM "public"."profiles"
   WHERE ("profiles"."id" = "auth"."uid"()))));
@@ -1969,6 +2048,14 @@ CREATE POLICY "Users can view org rate con instructions" ON "public"."rate_con_d
 
 
 CREATE POLICY "Users can view org trailers" ON "public"."trailers" FOR SELECT TO "authenticated" USING (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
+CREATE POLICY "Users can view org trip_loads" ON "public"."trip_loads" FOR SELECT TO "authenticated" USING (("trip_id" IN ( SELECT "trips"."id"
+   FROM "public"."trips"
+  WHERE ("trips"."organization_id" IN ( SELECT "profiles"."organization_id"
+           FROM "public"."profiles"
+          WHERE ("profiles"."id" = "auth"."uid"()))))));
 
 
 
@@ -2061,6 +2148,9 @@ ALTER TABLE "public"."stops" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."trailers" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."trip_loads" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."trips" ENABLE ROW LEVEL SECURITY;
@@ -3532,6 +3622,13 @@ GRANT ALL ON TABLE "public"."trailers" TO "postgres";
 GRANT ALL ON TABLE "public"."trailers" TO "anon";
 GRANT ALL ON TABLE "public"."trailers" TO "authenticated";
 GRANT ALL ON TABLE "public"."trailers" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."trip_loads" TO "postgres";
+GRANT ALL ON TABLE "public"."trip_loads" TO "anon";
+GRANT ALL ON TABLE "public"."trip_loads" TO "authenticated";
+GRANT ALL ON TABLE "public"."trip_loads" TO "service_role";
 
 
 

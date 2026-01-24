@@ -100,21 +100,15 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
       if (!mounted) return;
 
       if (createTrip) {
-        // Get first pickup and last delivery stops for trip creation
-        final pickupStop = _rateCon!.stops
-            .where((s) => s.stopType == StopType.pickup)
-            .firstOrNull;
-        final deliveryStop = _rateCon!.stops
-            .where((s) => s.stopType == StopType.delivery)
-            .lastOrNull;
-
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (context) => CreateTripScreen(
-              originAddress: pickupStop?.address,
-              destinationAddress: deliveryStop?.address,
+              originAddress: _rateCon!.originAddress,
+              destinationAddress: _rateCon!.destinationAddress,
               loadId: newLoadId,
+              brokerName: _rateCon!.brokerName,
+              rate: _rateCon!.totalRateAmount,
             ),
           ),
         );
@@ -307,18 +301,12 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) => CreateTripScreen(
-                                        // We'll try to get addresses from stops if available
-                                        originAddress: _rateCon!.stops
-                                            .where((s) =>
-                                                s.stopType == StopType.pickup)
-                                            .firstOrNull
-                                            ?.address,
-                                        destinationAddress: _rateCon!.stops
-                                            .where((s) =>
-                                                s.stopType == StopType.delivery)
-                                            .lastOrNull
-                                            ?.address,
+                                        originAddress: _rateCon!.originAddress,
+                                        destinationAddress:
+                                            _rateCon!.destinationAddress,
                                         loadId: widget.rateConId,
+                                        brokerName: _rateCon!.brokerName,
+                                        rate: _rateCon!.totalRateAmount,
                                       ),
                                     ),
                                   );

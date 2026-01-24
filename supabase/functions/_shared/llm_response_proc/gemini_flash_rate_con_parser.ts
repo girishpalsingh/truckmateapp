@@ -39,6 +39,9 @@ export function mapRateConData(documentId: string, extractedData: any, organizat
         // Risk
         overall_traffic_light: extractedData.risk_analysis?.overall_traffic_light || extractedData.overall_traffic_light || null,
 
+        // Driver View Data (JSONB)
+        driver_view_data: extractedData.driver_dispatch_view || null,
+
         status: 'under_review',
     };
 }

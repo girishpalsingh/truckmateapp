@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'core/utils/app_logger.dart';
+import 'core/utils/navigation_logger.dart';
+import 'core/utils/provider_logger.dart';
 
 import 'config/app_config.dart';
 import 'presentation/themes/app_theme.dart';
@@ -25,13 +28,7 @@ void main() async {
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     // Use print() for web console visibility
-    print('═══════════════════════════════════════════════════════════');
-    print('🔴 FLUTTER ERROR: ${details.exception}');
-    print('───────────────────────────────────────────────────────────');
-    print('Library: ${details.library}');
-    print('Context: ${details.context}');
-    print('Stack trace:\n${details.stack}');
-    print('═══════════════════════════════════════════════════════════');
+    AppLogger.e('FLUTTER FRAMEWORK ERROR', details.exception, details.stack);
   };
 
   // Catch async errors not handled by Flutter
@@ -46,40 +43,39 @@ void main() async {
 
     // Load configuration
     final config = await AppConfig.load();
-    print('✅ Config loaded: dev mode = ${config.isDevelopment}');
+    AppLogger.i('Config loaded: dev mode = ${config.isDevelopment}');
 
     // Initialize Supabase
     await Supabase.initialize(
       url: config.supabase.projectUrl,
       anonKey: config.supabase.anonKey,
     );
-    print('✅ Supabase initialized');
+    AppLogger.i('Supabase initialized');
 
     // Initialize Firebase
     try {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
-      print('✅ Firebase initialized');
+      AppLogger.i('Firebase initialized');
 
       // Initialize Push Notifications
       await PushNotificationService().initialize();
     } catch (e) {
-      print(
-          '⚠️ Firebase initialization failed (expected if config missing): $e');
+      AppLogger.w(
+          'Firebase initialization failed (expected if config missing)', e);
     }
     // print('ℹ️ Firebase skipped (Run `flutterfire configure` to enable)');
 
     // Initialize PowerSync for offline support
     // await PowerSyncService.initialize();
 
-    runApp(const ProviderScope(child: TruckMateApp()));
+    runApp(ProviderScope(
+      observers: [ProviderLogger()],
+      child: const TruckMateApp(),
+    ));
   }, (error, stackTrace) {
-    print('═══════════════════════════════════════════════════════════');
-    print('🔴 UNCAUGHT ERROR: $error');
-    print('───────────────────────────────────────────────────────────');
-    print('Stack trace:\n$stackTrace');
-    print('═══════════════════════════════════════════════════════════');
+    AppLogger.e('UNCAUGHT ASYNC ERROR', error, stackTrace);
   });
 }
 
@@ -90,8 +86,10 @@ class TruckMateApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'TruckMate',
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      navigatorObservers: [NavigationLogger()],
       localizationsDelegates: const [
         AppLocalizations.delegate, // Add this
         GlobalMaterialLocalizations.delegate,
@@ -118,3 +116,6 @@ class TruckMateApp extends StatelessWidget {
 
 /// Global Supabase client access
 final supabase = Supabase.instance.client;
+
+/// Global Navigator Key for navigation from services
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();

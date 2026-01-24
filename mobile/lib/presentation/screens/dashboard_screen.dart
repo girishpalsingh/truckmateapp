@@ -3,8 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../themes/app_theme.dart';
 import '../../services/trip_service.dart';
+import '../../services/load_service.dart';
+import '../../data/models/trip.dart';
 import 'rate_con_analysis_screen.dart';
+import 'load_details_screen.dart';
 import 'notification_screen.dart';
+import 'pdf_viewer_screen.dart';
 import '../providers/notification_provider.dart';
 import '../widgets/notification_toast.dart';
 import '../../../l10n/app_localizations.dart';
@@ -19,7 +23,9 @@ class DashboardScreen extends ConsumerStatefulWidget {
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   final TripService _tripService = TripService();
+  final LoadService _loadService = LoadService();
   Trip? _activeTrip;
+  Map<String, dynamic>? _latestLoad;
   TripProfitability? _profitability;
   bool _isLoading = true;
 
@@ -28,28 +34,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     super.initState();
     _loadActiveTrip();
     // Initialize notification listener via provider
-    // We defer slightly to ensure context is ready
     Future.microtask(() {
-      ref.read(notificationProvider.notifier); // Just reading instantiates it
+      ref.read(notificationProvider.notifier);
     });
   }
-
-  // NOTE: Original direct Supabase listener removed.
-  // The global NotificationProvider now handles listening and state updates.
-  // We can listen to state changes here if we want to show a toast/dialog,
-  // or just rely on the badge and occasional check.
-  // For the requested functionality: "bell icon with notification list and unread badge",
-  // the badge is UI state, the list is the screen.
-  // The "showDialog" behavior might still be desired?
-  // User asked "bell icon with list... will supabase broadcast to all users?"
-  // Let's keep the alert dialog logic but drive it from the provider state change?
-  // Actually, UI alerts might be annoying if notification center exists.
-  // Let's assume the Badge is primary, but we'll keep a listener for NEW urgent items if needed later.
-  // For now, removing the direct subscription avoids duplicate logic.
 
   Future<void> _loadActiveTrip() async {
     try {
       final trip = await _tripService.getActiveTrip();
+      final load = await _loadService.getLatestLoad();
+
       TripProfitability? profit;
       if (trip != null) {
         profit = await _tripService.calculateProfitability(trip.id);
@@ -57,6 +51,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       if (mounted) {
         setState(() {
           _activeTrip = trip;
+          _latestLoad = load;
           _profitability = profit;
           _isLoading = false;
         });
@@ -90,8 +85,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     if (confirm == true) {
       await ref.read(authProvider.notifier).signOut();
-      print('[Dashboard] Session cleared via authProvider, logging out');
-
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/login');
       }
@@ -116,25 +109,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       appBar: AppBar(
         title: DualLanguageText(
           primaryText: AppLocalizations.of(context)!.appName,
-          subtitleText:
-              'ਟਰੱਕਮੇਟ', // While appName is localized, subtitle might be hardcoded in ARB or passed separately.
-          // Wait, the ARB has keys like 'appName' and 'welcome'. Let's check if there is an 'appNameSubtitle'.
-          // There isn't an 'appNameSubtitle' in the file I viewed earlier, but 'welcomeSubtitle' exists.
-          // Looking at line 3 of app_en.arb: "appName": "TruckMate". No subtitle.
-          // I'll assume for now I keep the hardcoded Punjabi if no key exists, OR I should have added it.
-          // For now I will assume the key exists or I will just pass the translated string if I can.
-          // Actually, 'appName' might not have a subtitle key.
-          // Let's use the hardcoded string for now for the subtitle if it's missing, or add it.
-          // I'd better check carefully.
-          // Re-reading common pattern: "welcome": "Welcome", "welcomeSubtitle": "ਜੀ ਆਇਆਂ ਨੂੰ".
-          // 'appName' is just "TruckMate".
-          // I will use literal for subtitle for now since I didn't add appNameSubtitle.
-          primaryStyle: TextStyle(
+          subtitleText: 'ਟਰੱਕਮੇਟ',
+          primaryStyle: const TextStyle(
             color: Colors.white,
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
-          subtitleStyle: TextStyle(color: Colors.white70, fontSize: 12),
+          subtitleStyle: const TextStyle(color: Colors.white70, fontSize: 12),
           alignment: CrossAxisAlignment.center,
         ),
         actions: [
@@ -227,6 +208,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               else
                 _buildNoTripCard(),
 
+              // Latest Pending Load
+              if (_latestLoad != null &&
+                  (_activeTrip == null ||
+                      _activeTrip!.status == 'completed' ||
+                      _activeTrip!.status == 'deadhead')) ...[
+                const SizedBox(height: 16),
+                _buildLatestLoadCard(),
+              ],
+
               const SizedBox(height: 24),
 
               // Quick Actions
@@ -234,7 +224,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 primaryText: AppLocalizations.of(context)!.quickActions,
                 subtitleText:
                     AppLocalizations.of(context)!.quickActionsSubtitle,
-                primaryStyle: TextStyle(
+                primaryStyle: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
@@ -308,7 +298,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         onTap: (index) {
           switch (index) {
             case 0:
-              // Already on home
               break;
             case 1:
               Navigator.pushNamed(context, '/trips');
@@ -395,7 +384,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ],
             ),
             const SizedBox(height: 16),
-
             // Route
             Row(
               children: [
@@ -412,7 +400,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ],
             ),
             const SizedBox(height: 16),
-
             // Stats Row
             Row(
               children: [
@@ -436,7 +423,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ],
             ),
             const SizedBox(height: 16),
-
             // End Trip Button
             SizedBox(
               width: double.infinity,
@@ -527,6 +513,75 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  Widget _buildLatestLoadCard() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: Colors.blue.shade50,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => LoadDetailsScreen(load: _latestLoad!),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Row(children: [
+                    Icon(Icons.assignment_outlined, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Text('Latest Load',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, color: Colors.blue)),
+                  ]),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8)),
+                    child: Text(
+                        (_latestLoad!['status'] ?? 'PENDING')
+                            .toString()
+                            .toUpperCase(),
+                        style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.blue.shade800,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text('${_latestLoad!['broker_name'] ?? "Unknown Broker"}',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16)),
+              Text('Rate: \$${_latestLoad!['primary_rate'] ?? 0}',
+                  style: TextStyle(color: Colors.green.shade700)),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: const [
+                  Text('Tap to view details',
+                      style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  Icon(Icons.chevron_right, size: 16, color: Colors.grey),
+                ],
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildActionButton({
     required IconData icon,
     required String label,
@@ -570,7 +625,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       color: Colors.transparent,
       child: InkWell(
         onTap: () {
-          // TODO: Implement voice commands
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
                 content: Text(
@@ -602,7 +656,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     primaryText: AppLocalizations.of(context)!.voiceCommand,
                     subtitleText:
                         AppLocalizations.of(context)!.voiceCommandSubtitle,
-                    primaryStyle: TextStyle(
+                    primaryStyle: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -619,7 +673,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   void _showNotificationToast(dynamic notification) {
     late OverlayEntry overlayEntry;
 
-    // Auto-dismiss timer
     Future.delayed(const Duration(seconds: 15), () {
       if (overlayEntry.mounted) {
         overlayEntry.remove();
@@ -638,17 +691,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             body: notification.body ?? 'You have a new update.',
             onViewTap: () {
               overlayEntry.remove();
-              // Mark as read if ID is available
               if (notification.data['id'] != null) {
-                // Use the provider notifier to update state + backend
                 ref
                     .read(notificationProvider.notifier)
                     .markAsRead(notification.data['id']);
               }
 
-              // Navigate based on type
               if (notification.data['type'] == 'rate_con_review') {
-                // Strictly use new ID key as requested
                 final rateConId = notification.data['rate_confirmation_id'];
 
                 if (rateConId != null) {
@@ -661,7 +710,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     ),
                   );
                 } else {
-                  // Fallback to notification screen if no rate con ID
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -669,6 +717,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     ),
                   );
                 }
+              } else if (notification.data['type'] == 'dispatch_sheet') {
+                final path = notification.data['path'];
+                final url = notification.data['url'];
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PdfViewerScreen(
+                      title: 'Dispatcher Sheet',
+                      storagePath: path,
+                      url: url,
+                    ),
+                  ),
+                );
               } else {
                 Navigator.push(
                   context,

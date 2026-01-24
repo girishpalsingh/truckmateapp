@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/models/rate_con_model.dart';
 import '../data/models/risk_clause.dart';
+import '../core/utils/app_logger.dart';
 
 class RateConService {
   final SupabaseClient _client;
@@ -10,7 +11,9 @@ class RateConService {
 
   /// Get a rate confirmation with all related data
   Future<RateCon> getRateCon(String id) async {
-    final response = await _client.from('rate_confirmations').select('''
+    AppLogger.d('RateConService: Fetching RateCon $id');
+    try {
+      final response = await _client.from('rate_confirmations').select('''
           *,
           reference_numbers(*),
           stops(*),
@@ -21,15 +24,21 @@ class RateConService {
           )
         ''').eq('id', id).maybeSingle();
 
-    if (response == null) {
-      throw Exception('Rate confirmation not found with id: $id');
+      if (response == null) {
+        throw Exception('Rate confirmation not found with id: $id');
+      }
+      return RateCon.fromJson(response);
+    } catch (e, stack) {
+      AppLogger.e('RateConService: Error fetching RateCon $id', e, stack);
+      rethrow;
     }
-    return RateCon.fromJson(response);
   }
 
   /// Get rate confirmation by document ID
   Future<RateCon?> getRateConByDocumentId(String documentId) async {
-    final response = await _client.from('rate_confirmations').select('''
+    AppLogger.d('RateConService: Fetching RateCon by doc ID $documentId');
+    try {
+      final response = await _client.from('rate_confirmations').select('''
           *,
           reference_numbers(*),
           stops(*),
@@ -40,8 +49,13 @@ class RateConService {
           )
         ''').eq('document_id', documentId).maybeSingle();
 
-    if (response == null) return null;
-    return RateCon.fromJson(response);
+      if (response == null) return null;
+      return RateCon.fromJson(response);
+    } catch (e, stack) {
+      AppLogger.e('RateConService: Error fetching RateCon by doc $documentId',
+          e, stack);
+      rethrow;
+    }
   }
 
   /// List all rate confirmations for the organization (without full related data)
@@ -64,13 +78,45 @@ class RateConService {
 
   /// Approve rate confirmation and create load. Returns the new Load ID.
   Future<String> approveRateCon(String id, Map<String, dynamic> edits) async {
-    final response =
-        await _client.rpc('approve_rate_con_and_create_load', params: {
-      'rate_con_uuid': id,
-      'edits': edits,
-    });
+    AppLogger.i('RateConService: Approving RateCon $id (Client-side)');
+    try {
+      // 1. Update status and Apply Edits to Rate Con
+      final updateData = {
+        ...edits,
+        'status': 'approved',
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      await _client.from('rate_confirmations').update(updateData).eq('id', id);
 
-    return response as String;
+      // 2. Fetch Rate Con Data for Mapping
+      // We re-fetch to ensure we have the latest merged data (edits + existing)
+      final rateConResponse = await _client
+          .from('rate_confirmations')
+          .select()
+          .eq('id', id)
+          .single();
+
+      // 3. Create Load
+      // Map fields from Rate Con to Load
+      final loadData = {
+        'organization_id': rateConResponse['organization_id'],
+        'rate_confirmation_id': id,
+        'broker_name': rateConResponse['broker_name'],
+        'broker_load_id': rateConResponse['load_reference_number'],
+        'primary_rate': rateConResponse['total_rate_amount'] ??
+            rateConResponse['rate_amount'],
+        'status': 'assigned',
+        'created_at': DateTime.now().toIso8601String(),
+      };
+
+      final loadResponse =
+          await _client.from('loads').insert(loadData).select().single();
+
+      return loadResponse['id'] as String;
+    } catch (e, stack) {
+      AppLogger.e('RateConService: Error approving RateCon $id', e, stack);
+      rethrow;
+    }
   }
 
   /// Reject rate confirmation

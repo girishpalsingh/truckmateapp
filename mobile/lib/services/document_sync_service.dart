@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 import '../data/models/pending_document_model.dart';
 import 'local_document_storage.dart';
 import '../core/utils/user_utils.dart';
+import '../core/utils/app_logger.dart';
 
 /// Service for syncing documents with server and handling LLM processing
 class DocumentSyncService {
@@ -71,8 +72,8 @@ class DocumentSyncService {
 
   /// Log helper that works on web
   void _log(String message) {
-    // Use print for web console visibility
-    print('[DocumentSync] $message');
+    // Forward to AppLogger
+    AppLogger.i('[DocumentSync] $message');
   }
 
   /// Save document locally and queue for sync
@@ -197,8 +198,8 @@ class DocumentSyncService {
       _log('═══════════════════════════════════════════════════════════');
       _log('✅ SYNC COMPLETE');
       _log('═══════════════════════════════════════════════════════════');
-    } catch (e) {
-      _log('❌ Sync error: $e');
+    } catch (e, stack) {
+      AppLogger.e('Sync error', e, stack);
     } finally {
       _isSyncing = false;
     }
@@ -295,8 +296,8 @@ class DocumentSyncService {
       // Trigger LLM processing
       _log('🤖 TRIGGERING LLM PROCESSING...');
       await _processWithLLM(updatedDoc);
-    } catch (e) {
-      _log('❌ Failed to sync document ${doc.id}: $e');
+    } catch (e, stack) {
+      AppLogger.e('Failed to sync document ${doc.id}', e, stack);
 
       final failedDoc = doc.copyWith(
         syncStatus: DocumentSyncStatus.failed,
@@ -360,8 +361,8 @@ class DocumentSyncService {
 
       await _updatePendingDocument(updatedDoc);
       _statusController.add(updatedDoc);
-    } catch (e) {
-      _log('❌ LLM processing failed: $e');
+    } catch (e, stack) {
+      AppLogger.e('LLM processing failed', e, stack);
 
       // Mark as complete but with error (upload succeeded)
       final failedDoc = doc.copyWith(
@@ -412,7 +413,7 @@ class DocumentSyncService {
     // Try local first
     final localBytes = await _localStorage.getLocalDocumentBytes(doc.localPath);
     if (localBytes != null) {
-      debugPrint('📁 Loaded from local cache: ${doc.id}');
+      AppLogger.d('📁 Loaded from local cache: ${doc.id}');
       return localBytes;
     }
 
@@ -439,7 +440,7 @@ class DocumentSyncService {
   Future<void> clearPendingQueue() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_pendingDocsKey);
-    debugPrint('🗑️ Pending queue cleared');
+    AppLogger.d('🗑️ Pending queue cleared');
   }
 
   /// Delete a single document from the queue and local storage
@@ -488,8 +489,8 @@ class DocumentSyncService {
       }
 
       return true;
-    } catch (e) {
-      _log('❌ Failed to delete documents: $e');
+    } catch (e, stack) {
+      AppLogger.e('Failed to delete documents', e, stack);
       return false;
     }
   }

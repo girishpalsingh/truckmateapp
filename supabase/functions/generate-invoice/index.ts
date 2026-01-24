@@ -4,7 +4,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
-import { authorizeUser } from "../_shared/auth.ts";
+import { authorizeRole } from "../_shared/utils.ts";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -24,12 +24,12 @@ serve(async (req) => withLogging(req, async (req) => {
     }
 
     try {
-        // Verify User
-        await authorizeUser(req);
-
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+        // Verify User and Role
+        await authorizeRole(req, supabase, ['admin', 'owner', 'dispatcher', 'driver']);
 
         const body: InvoiceRequest = await req.json();
         const { trip_id, send_for_approval = true } = body;

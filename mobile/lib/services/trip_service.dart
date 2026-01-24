@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'expense_service.dart';
+import '../core/utils/app_logger.dart';
+import '../data/models/trip.dart';
 
 /// Service for managing trips
 class TripService {
@@ -14,6 +16,8 @@ class TripService {
     String? driverId,
     int limit = 50,
   }) async {
+    AppLogger.d(
+        'TripService: Fetching trips (status: $status, driver: $driverId)');
     var query = _client.from('trips').select('''
       *,
       load:loads(*),
@@ -31,18 +35,41 @@ class TripService {
     final response =
         await query.order('created_at', ascending: false).limit(limit);
 
-    return (response as List).map((json) => Trip.fromJson(json)).toList();
+    final trips =
+        (response as List).map((json) => Trip.fromJson(json)).toList();
+    AppLogger.d('TripService: Fetched ${trips.length} trips');
+    return trips;
   }
 
   /// Get active trip for current driver
   Future<Trip?> getActiveTrip() async {
-    final response = await _client.from('trips').select('''
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      AppLogger.w(
+          'TripService: Attempted to fetch active trip without logged-in user');
+      return null;
+    }
+
+    AppLogger.d('TripService: Fetching active trip for user $userId');
+    try {
+      final response = await _client
+          .from('trips')
+          .select('''
           *,
           load:loads(*),
           truck:trucks(truck_number, make, model)
-        ''').eq('status', 'active').maybeSingle();
+        ''')
+          .eq('driver_id', userId)
+          .eq('status', 'active')
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
 
-    return response != null ? Trip.fromJson(response) : null;
+      return response != null ? Trip.fromJson(response) : null;
+    } catch (e, stack) {
+      AppLogger.e('TripService: Error fetching active trip', e, stack);
+      rethrow;
+    }
   }
 
   /// Create a new trip
@@ -55,34 +82,68 @@ class TripService {
     String? destinationAddress,
     required int odometerStart,
   }) async {
-    final response = await _client.from('trips').insert({
-      'organization_id': organizationId,
-      'load_id': loadId,
-      'truck_id': truckId,
-      'driver_id': driverId,
-      'origin_address': originAddress,
-      'destination_address': destinationAddress,
-      'odometer_start': odometerStart,
-      'status': loadId != null ? 'active' : 'deadhead',
-    }).select('''
+    AppLogger.i('TripService: Creating trip (load: $loadId)');
+    try {
+      final response = await _client.from('trips').insert({
+        'organization_id': organizationId,
+        'load_id': loadId,
+        'truck_id': truckId,
+        'driver_id': driverId,
+        'origin_address': originAddress,
+        'destination_address': destinationAddress,
+        'odometer_start': odometerStart,
+        'status': loadId != null ? 'active' : 'deadhead',
+      }).select('''
           *,
           load:loads(*),
           truck:trucks(truck_number, make, model)
         ''').single();
 
-    return Trip.fromJson(response);
+      final tripId = response['id'];
+
+      // Insert into trip_loads if loadId is provided
+      if (loadId != null) {
+        try {
+          await _client.from('trip_loads').insert({
+            'trip_id': tripId,
+            'load_id': loadId,
+            'pickup_sequence': 1,
+            'delivery_sequence': 1,
+          });
+        } catch (e) {
+          AppLogger.w('TripService: Failed to create trip_loads mapping', e);
+          // Non-critical (?) or should we fail?
+          // For now logging warning
+        }
+      }
+
+      AppLogger.i('TripService: Trip created successfully');
+      return Trip.fromJson(response);
+    } catch (e, stack) {
+      AppLogger.e('TripService: Error creating trip', e, stack);
+      rethrow;
+    }
   }
 
   /// Update trip
   Future<Trip> updateTrip(String tripId, Map<String, dynamic> updates) async {
-    final response =
-        await _client.from('trips').update(updates).eq('id', tripId).select('''
+    AppLogger.i('TripService: Updating trip $tripId');
+    try {
+      final response = await _client
+          .from('trips')
+          .update(updates)
+          .eq('id', tripId)
+          .select('''
           *,
           load:loads(*),
           truck:trucks(truck_number, make, model)
         ''').single();
 
-    return Trip.fromJson(response);
+      return Trip.fromJson(response);
+    } catch (e, stack) {
+      AppLogger.e('TripService: Error updating trip $tripId', e, stack);
+      rethrow;
+    }
   }
 
   /// End/complete a trip
@@ -118,109 +179,28 @@ class TripService {
   }
 
   /// Generate Dispatcher Sheet
-  Future<String> generateDispatcherSheet(String loadId) async {
-    final response = await _client.functions.invoke(
-      'generate-dispatch-sheet',
-      body: {'load_id': loadId},
-    );
+  Future<String> generateDispatcherSheet(
+      {String? tripId, String? loadId}) async {
+    AppLogger.i(
+        'TripService: Generating dispatcher sheet (trip: $tripId, load: $loadId)');
+    try {
+      final response = await _client.functions.invoke(
+        'generate-dispatch-sheet',
+        body: {
+          if (tripId != null) 'trip_id': tripId,
+          if (loadId != null) 'load_id': loadId,
+        },
+      );
 
-    final data = response.data as Map<String, dynamic>;
-    if (data['url'] == null) {
-      throw Exception('Failed to generate dispatcher sheet: No URL returned');
+      final data = response.data as Map<String, dynamic>;
+      if (data['url'] == null) {
+        throw Exception('Failed to generate dispatcher sheet: No URL returned');
+      }
+
+      return data['url'] as String;
+    } catch (e, stack) {
+      AppLogger.e('TripService: Error generating dispatch sheet', e, stack);
+      rethrow;
     }
-
-    return data['url'] as String;
-  }
-}
-
-class Trip {
-  final String id;
-  final String organizationId;
-  final String? loadId;
-  final String? truckId;
-  final String? driverId;
-  final String? originAddress;
-  final String? destinationAddress;
-  final int? odometerStart;
-  final int? odometerEnd;
-  final int? totalMiles;
-  final String status;
-  final DateTime? createdAt;
-  final Map<String, dynamic>? load;
-  final Map<String, dynamic>? truck;
-  final Map<String, dynamic>? driver;
-
-  Trip({
-    required this.id,
-    required this.organizationId,
-    this.loadId,
-    this.truckId,
-    this.driverId,
-    this.originAddress,
-    this.destinationAddress,
-    this.odometerStart,
-    this.odometerEnd,
-    this.totalMiles,
-    required this.status,
-    this.createdAt,
-    this.load,
-    this.truck,
-    this.driver,
-  });
-
-  factory Trip.fromJson(Map<String, dynamic> json) {
-    return Trip(
-      id: json['id'],
-      organizationId: json['organization_id'],
-      loadId: json['load_id'],
-      truckId: json['truck_id'],
-      driverId: json['driver_id'],
-      originAddress: json['origin_address'],
-      destinationAddress: json['destination_address'],
-      odometerStart: json['odometer_start'],
-      odometerEnd: json['odometer_end'],
-      totalMiles: json['total_miles'],
-      status: json['status'],
-      createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'])
-          : null,
-      load: json['load'],
-      truck: json['truck'],
-      driver: json['driver'],
-    );
-  }
-
-  bool get isActive => status == 'active';
-  bool get isCompleted => status == 'completed';
-  bool get isDeadhead => status == 'deadhead';
-
-  double? get rate => load?['primary_rate']?.toDouble();
-  String? get truckNumber => truck?['truck_number'];
-  String? get driverName => driver?['full_name'];
-}
-
-class TripProfitability {
-  final double revenue;
-  final double expenses;
-  final double detentionRevenue;
-  final double netProfit;
-  final double profitMargin;
-
-  TripProfitability({
-    required this.revenue,
-    required this.expenses,
-    required this.detentionRevenue,
-    required this.netProfit,
-    required this.profitMargin,
-  });
-
-  factory TripProfitability.fromJson(Map<String, dynamic> json) {
-    return TripProfitability(
-      revenue: (json['revenue'] ?? 0).toDouble(),
-      expenses: (json['expenses'] ?? 0).toDouble(),
-      detentionRevenue: (json['detention_revenue'] ?? 0).toDouble(),
-      netProfit: (json['net_profit'] ?? 0).toDouble(),
-      profitMargin: (json['profit_margin'] ?? 0).toDouble(),
-    );
   }
 }

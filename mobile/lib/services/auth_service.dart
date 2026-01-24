@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/app_config.dart';
 import '../data/models/user_profile.dart';
+import '../core/utils/app_logger.dart';
 
 class AuthService {
   final SupabaseClient _client;
@@ -13,6 +14,7 @@ class AuthService {
 
   /// Sends an OTP via the Edge Function
   Future<OTPSendResult> sendOTP({required String phoneNumber}) async {
+    AppLogger.i('AuthService: Sending OTP to $phoneNumber');
     try {
       final response = await _client.functions.invoke(
         'auth-otp',
@@ -25,11 +27,13 @@ class AuthService {
           responseData = jsonDecode(responseData);
         } catch (e) {
           // If decoding fails, we'll keep it as string or handle it later
-          print('Error decoding response data: $e');
+          AppLogger.w('AuthService: Error decoding response data: $e');
         }
       }
 
       if (response.status != 200) {
+        AppLogger.w(
+            'AuthService: Failed to send OTP. Status: ${response.status}');
         return OTPSendResult(
           success: false,
           message: 'Failed to send OTP',
@@ -40,13 +44,15 @@ class AuthService {
       }
 
       final data = responseData as Map<String, dynamic>;
+      AppLogger.i('AuthService: OTP sent successfully');
 
       return OTPSendResult(
         success: true,
         message: 'OTP sent successfully',
         devMode: data['dev'] == true || data['dev_mode'] == true,
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogger.e('AuthService: Exception sending OTP', e, stackTrace);
       return OTPSendResult(
         success: false,
         message: 'Something went wrong: $e',
@@ -60,6 +66,7 @@ class AuthService {
     required String phoneNumber,
     required String otp,
   }) async {
+    AppLogger.i('AuthService: Verifying OTP for $phoneNumber');
     try {
       final response = await _client.functions.invoke(
         'auth-otp',
@@ -71,11 +78,13 @@ class AuthService {
         try {
           responseData = jsonDecode(responseData);
         } catch (e) {
-          print('Error decoding verify response data: $e');
+          AppLogger.w('AuthService: Error decoding verify response data: $e');
         }
       }
 
       if (response.status != 200) {
+        AppLogger.w(
+            'AuthService: Invalid OTP or server error. Status: ${response.status}');
         return OTPVerifyResult(
           success: false,
           message: responseData is Map
@@ -90,10 +99,23 @@ class AuthService {
       final sessionData = data['session'];
 
       // --- CRITICAL STEP: ESTABLISH AUTH CONTEXT ---
-      if (sessionData != null && sessionData['refresh_token'] != null) {
-        // We use setSession with the refresh_token.
-        // This handles the JWT acquisition and background refreshing for you.
-        await _client.auth.setSession(sessionData['refresh_token']);
+      if (sessionData != null && sessionData['access_token'] != null) {
+        // Use setSession with the access_token.
+        // Note: For long-term persistence and auto-refresh, the Supabase SDK
+        // will use the refresh_token if it's included in the session recovery.
+        // In supabase_flutter 2.x, passing the access_token to setSession is common,
+        // but restoring from a full session object or refresh token is better.
+        await _client.auth.setSession(sessionData['access_token']);
+
+        // If you want robust auto-refreshing from the refresh token immediately:
+        if (sessionData['refresh_token'] != null) {
+          try {
+            await _client.auth.recoverSession(sessionData['refresh_token']);
+          } catch (e) {
+            AppLogger.w(
+                'AuthService: Non-critical error during session recovery: $e');
+          }
+        }
       } else {
         throw 'No session data returned from server';
       }
@@ -102,6 +124,8 @@ class AuthService {
       final profileData = data['profile'] as Map<String, dynamic>?;
       final userId = data['user']?['id'] ?? data['profile']?['id'];
 
+      AppLogger.i(
+          'AuthService: Login successful. User Exists: ${profileData != null}');
       return OTPVerifyResult(
         success: true,
         userExists: profileData != null,
@@ -111,7 +135,8 @@ class AuthService {
         userId: userId,
         profile: profileData != null ? UserProfile.fromJson(profileData) : null,
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogger.e('AuthService: Verification failed', e, stackTrace);
       return OTPVerifyResult(
         success: false,
         message: 'Verification failed: ${e.toString()}',
@@ -122,7 +147,10 @@ class AuthService {
   bool get isLoggedIn => _client.auth.currentSession != null;
   User? get currentUser => _client.auth.currentUser;
 
-  Future<void> signOut() async => await _client.auth.signOut();
+  Future<void> signOut() async {
+    AppLogger.i('AuthService: Signing out');
+    await _client.auth.signOut();
+  }
 }
 
 // ... (OTPSendResult and OTPVerifyResult classes remain the same)

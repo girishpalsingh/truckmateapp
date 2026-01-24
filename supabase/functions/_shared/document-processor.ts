@@ -22,6 +22,7 @@ const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 import { EXTRACTION_PROMPTS as prompts } from "./prompts.ts";
 import { processRateCon } from "./rate-con-processor.ts";
+import mockResponse from "../mock_llm_response/response.json" with { type: "json" };
 
 // Process image with Gemini
 function loadPrompt(documentType: string): string {
@@ -34,6 +35,19 @@ export async function processWithGemini(imageUrl: string, documentType: string, 
     rawText: string;
     confidence: number;
 }> {
+    // Check for Mock LLM Mode
+    if (config.development.mock_llm) {
+        console.log("MOCK LLM MODE ENABLED: Returning mock response in 2 seconds...");
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        console.log("Returning mock data:", JSON.stringify(mockResponse, null, 2));
+        return {
+            extractedData: mockResponse,
+            rawText: JSON.stringify(mockResponse),
+            confidence: 0.95
+        };
+    }
+
     const prompt = loadPrompt(documentType);
 
     console.log(`Using model: ${modelName} for document type: ${documentType}`);
@@ -84,9 +98,10 @@ export async function processWithGemini(imageUrl: string, documentType: string, 
             }
         ],
         config: {
-            temperature: 0,
+            temperature: 1.0,
             maxOutputTokens: 25000,
-            responseMimeType: "application/json"
+            responseMimeType: "application/json",
+            thinkingConfig: { includeThoughts: false, thinkingLevel: "minimal" }
         }
     });
 
@@ -273,15 +288,19 @@ export async function processDocumentWithAI(
     if (updateError) throw updateError
 
     // Post-Processing for Rate Confirmation
+    let rateConId: string | null = null;
     console.log(`Checking Rate Con Processing: Type=${documentType}, OrgId=${effectiveOrgId}`);
     if (documentType === 'rate_con' && effectiveOrgId) {
         try {
-            await processRateCon(documentId, extractedData, effectiveOrgId, userId);
+            const dbRateCon = await processRateCon(documentId, extractedData, effectiveOrgId, userId);
+            if (dbRateCon) {
+                rateConId = dbRateCon.id;
+                // Inject the DB UUID into extractedData so clients can easily find it?
+                // Or just return it in the wrapping object.
+                (extractedData as any).rate_con_db_id = rateConId;
+            }
         } catch (e) {
             console.error("Error in processRateCon:", e);
-            // We don't fail the whole request if this optional step fails, or do we?
-            // Prompt says "now when the llm response after parsing rate con document comes then we fill this table"
-            // Best effort is safe.
         }
     }
 
@@ -292,6 +311,7 @@ export async function processDocumentWithAI(
         extractedData,
         rawText,
         confidence,
-        modelUsed: llmModel
+        modelUsed: llmModel,
+        rateConId // Explicit return property
     }
 }

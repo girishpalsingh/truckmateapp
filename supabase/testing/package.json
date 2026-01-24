@@ -1,0 +1,17 @@
+{
+  "name": "supabase-testing",
+  "version": "1.0.0",
+  "description": "End-to-end testing for Supabase functions",
+  "main": "test_e2e.ts",
+  "scripts": {
+    "test": "ts-node test_e2e.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.1",
+    "typescript": "^5.3.3"
+  }
+}

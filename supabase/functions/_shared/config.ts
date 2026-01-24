@@ -6,6 +6,7 @@ export const config = {
         default_otp: appConfig.development.default_otp,
         skip_twilio: appConfig.development.skip_twilio,
         skip_email: appConfig.development.skip_email,
+        mock_llm: appConfig.development.mock_llm,
     },
     supabase: {
         url: Deno.env.get("SUPABASE_URL") ?? appConfig.supabase.project_url,

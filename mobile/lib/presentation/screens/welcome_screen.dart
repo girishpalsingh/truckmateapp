@@ -76,7 +76,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
   @override
   Widget build(BuildContext context) {
     // Listen for state changes to trigger navigation
-    ref.listen(authProvider, (previous, next) {
+    ref.listen<AuthState>(authProvider, (previous, next) {
       _checkAuthAndNavigate(next);
     });
 

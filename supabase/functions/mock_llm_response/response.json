@@ -1,0 +1,233 @@
+{
+    "rate_con_id": "831842",
+    "broker_details": {
+        "broker_name": "Transfix",
+        "broker_mc_number": null,
+        "address": "498 7th Avenue, 19th floor, New York, NY 10018",
+        "phone": "929-293-0360",
+        "email": "carriersuccess@transfix.io"
+    },
+    "reference_numbers": [
+        {
+            "type": "Load Number",
+            "value": "831842"
+        },
+        {
+            "type": "BOL",
+            "value": "00002843"
+        },
+        {
+            "type": "PO",
+            "value": "TO63123"
+        }
+    ],
+    "carrier_details": {
+        "carrier_name": "RAC TRANSPORT LLC",
+        "carrier_dot_number": null,
+        "address": null,
+        "phone": null,
+        "email": null,
+        "equipment_type": "53' Van",
+        "equipment_number": null
+    },
+    "financial_details": {
+        "rate_amount": 1400,
+        "currency": "USD",
+        "charges": [
+            {
+                "description": "Flat Rate",
+                "amount": 1400
+            }
+        ],
+        "payment_terms": "Net 30 Days"
+    },
+    "stops": [
+        {
+            "stop_type": "Pickup",
+            "stop_sequence": 1,
+            "address": "1500 Blair Rd, Carteret, NJ 07008",
+            "city": "Carteret",
+            "state": "NJ",
+            "zip": "07008",
+            "contact_person": null,
+            "phone": null,
+            "email": "carteretdockteam@onepeloton.com",
+            "scheduled_arrival": "2021-09-16T14:00:00",
+            "scheduled_departure": "2021-09-16T17:00:00",
+            "special_instructions": "FCFS. Pallet Count: 8. Weight: 9516. DRIVER MUST HAVE STRAPS OR LOAD BARS."
+        },
+        {
+            "stop_type": "Delivery",
+            "stop_sequence": 2,
+            "address": "4530 Steelway Blvd South, Liverpool, NY 13090",
+            "city": "Liverpool",
+            "state": "NY",
+            "zip": "13090",
+            "contact_person": "Peloton c/o XPO Logistics",
+            "phone": null,
+            "email": null,
+            "scheduled_arrival": "2021-09-17T07:00:00",
+            "scheduled_departure": null,
+            "special_instructions": "Appt. Pallet Count: 8. Weight: 9516."
+        }
+    ],
+    "risk_analysis": {
+        "overall_traffic_light": "RED",
+        "clauses_found": [
+            {
+                "clause_type": "Fines",
+                "traffic_light": "RED",
+                "clause_title": "100% Fine for Partialing",
+                "clause_title_punjabi": "ਹਿੱਸੇਦਾਰੀ (Partialing) ਲਈ 100% ਜੁਰਮਾਨਾ",
+                "danger_simple_language": "If you partial this load, you lose 100% of the pay.",
+                "danger_simple_punjabi": "ਜੇ ਤੁਸੀਂ ਹੋਰ ਮਾਲ ਵੀ ਲੋਡ ਕੀਤਾ, ਤਾਂ ਤੁਹਾਨੂੰ ਕੋਈ ਪੈਸਾ ਨਹੀਂ ਮਿਲੇਗਾ।",
+                "original_text": "If the carrier partials any of our shipments, you will be fined 100% of the agreed-upon rate.",
+                "notification": {
+                    "title": "Do Not Partial",
+                    "description": "Strict prohibition on partialing. Fine is 100% of rate.",
+                    "trigger_type": "Absolute",
+                    "deadline_iso": null,
+                    "relative_minutes_offset": 0,
+                    "original_clause": "If the carrier partials any of our shipments, you will be fined 100% of the agreed-upon rate.",
+                    "notification_start_event": "Before Contract signature"
+                }
+            },
+            {
+                "clause_type": "Fines",
+                "traffic_light": "RED",
+                "clause_title": "Late Arrival Fee",
+                "clause_title_punjabi": "ਦੇਰੀ ਨਾਲ ਪਹੁੰਚਣ ਦੀ ਫੀਸ",
+                "danger_simple_language": "25% fine (minimum $200) if the driver is late for delivery.",
+                "danger_simple_punjabi": "ਡਿਲੀਵਰੀ 'ਤੇ ਦੇਰੀ ਨਾਲ ਪਹੁੰਚਣ 'ਤੇ 25% (ਘੱਟੋ-ਘੱਟ $200) ਜੁਰਮਾਨਾ।",
+                "original_text": "Carrier agrees to a 25% late fee (minimum $200 late fee) should driver arrive late to delivery.",
+                "notification": {
+                    "title": "Late Fee Alert",
+                    "description": "Ensure on-time delivery. Late fee is 25% (min $200). Call if delayed.",
+                    "trigger_type": "Conditional",
+                    "deadline_iso": null,
+                    "relative_minutes_offset": 0,
+                    "original_clause": "Carrier agrees to a 25% late fee (minimum $200 late fee) should driver arrive late to delivery.",
+                    "notification_start_event": "Delivery Delay"
+                }
+            },
+            {
+                "clause_type": "Detention",
+                "traffic_light": "RED",
+                "clause_title": "Pre-Detention Notification Required",
+                "clause_title_punjabi": "ਡਿਟੈਂਸ਼ਨ ਤੋਂ ਪਹਿਲਾਂ ਸੂਚਨਾ ਜ਼ਰੂਰੀ",
+                "danger_simple_language": "You must notify Transfix 30 minutes BEFORE detention starts or you get paid $0.",
+                "danger_simple_punjabi": "ਡਿਟੈਂਸ਼ਨ ਸ਼ੁਰੂ ਹੋਣ ਤੋਂ 30 ਮਿੰਟ ਪਹਿਲਾਂ ਦੱਸਣਾ ਲਾਜ਼ਮੀ ਹੈ ਨਹੀਂ ਤਾਂ ਪੈਸੇ ਨਹੀਂ ਮਿਲਣਗੇ।",
+                "original_text": "Carriers must notify Transfix... 30 minutes before detention starts in order to be eligible for detention payout.",
+                "notification": {
+                    "title": "Detention Alert Needed",
+                    "description": "Notify Transfix NOW. You must alert them 30 mins before free time ends to get paid.",
+                    "trigger_type": "Relative",
+                    "deadline_iso": null,
+                    "relative_minutes_offset": -30,
+                    "original_clause": "Carriers must notify Transfix... 30 minutes before detention starts",
+                    "notification_start_event": "Detention Start"
+                }
+            },
+            {
+                "clause_type": "Fines",
+                "traffic_light": "RED",
+                "clause_title": "Tracking Failure Fine",
+                "clause_title_punjabi": "ਟਰੈਕਿੰਗ ਫੇਲ੍ਹ ਹੋਣ 'ਤੇ ਜੁਰਮਾਨਾ",
+                "danger_simple_language": "Fine up to $200 and detention denial if tracking is not used continuously.",
+                "danger_simple_punjabi": "ਜੇਕਰ ਟਰੈਕਿੰਗ ਲਗਾਤਾਰ ਨਹੀਂ ਚੱਲੀ ਤਾਂ $200 ਤੱਕ ਜੁਰਮਾਨਾ ਲੱਗ ਸਕਦਾ ਹੈ।",
+                "original_text": "If Transfix incurs penalties... right to deduct... up to 25% of carrier rate, not to exceed $200. Driver is ineligible for detention compensation if they do not track.",
+                "notification": {
+                    "title": "Enable Tracking",
+                    "description": "Start Transfix App tracking now. Penalty of $200 applies if not tracking.",
+                    "trigger_type": "Absolute",
+                    "deadline_iso": null,
+                    "relative_minutes_offset": 0,
+                    "original_clause": "The driver agrees to track continuously... Driver is ineligible for detention... if they do not track",
+                    "notification_start_event": "Status"
+                }
+            },
+            {
+                "clause_type": "Payment",
+                "traffic_light": "YELLOW",
+                "clause_title": "48 Hour Paperwork Rule",
+                "clause_title_punjabi": "48 ਘੰਟੇ ਪੇਪਰਵਰਕ ਨਿਯਮ",
+                "danger_simple_language": "Submit POD within 48 hours or lose accessorial pay (detention/lumpers).",
+                "danger_simple_punjabi": "POD 48 ਘੰਟਿਆਂ ਦੇ ਅੰਦਰ ਜਮ੍ਹਾਂ ਕਰੋ, ਨਹੀਂ ਤਾਂ ਵਾਧੂ ਖਰਚੇ (ਲੰਪਰ/ਡਿਟੈਂਸ਼ਨ) ਨਹੀਂ ਮਿਲਣਗੇ।",
+                "original_text": "Failure to submit within 48 hours will result in a rejection of any additional charges including, but not limited to, accessorials.",
+                "notification": {
+                    "title": "Upload POD ASAP",
+                    "description": "Upload POD within 48 hours of delivery to ensure payment of accessorials.",
+                    "trigger_type": "Relative",
+                    "deadline_iso": null,
+                    "relative_minutes_offset": 2880,
+                    "original_clause": "Failure to submit within 48 hours will result in a rejection of any additional charges",
+                    "notification_start_event": "Delivery Done"
+                }
+            },
+            {
+                "clause_type": "Other",
+                "traffic_light": "GREEN",
+                "clause_title": "PPE Required",
+                "clause_title_punjabi": "ਸੁਰੱਖਿਆ ਸਮਾਨ (PPE) ਜ਼ਰੂਰੀ",
+                "danger_simple_language": "Driver must wear safety gear (vest, boots, etc).",
+                "danger_simple_punjabi": "ਡਰਾਈਵਰ ਕੋਲ ਸੁਰੱਖਿਆ ਸਮਾਨ (ਵੈਸਟ, ਬੂਟ ਆਦਿ) ਹੋਣਾ ਲਾਜ਼ਮੀ ਹੈ।",
+                "original_text": "Carriers are required to comply with Shipper specific PPE policies",
+                "notification": {
+                    "title": "PPE Check",
+                    "description": "Ensure driver has full PPE (Vest, Boots) before arrival.",
+                    "trigger_type": "Relative",
+                    "deadline_iso": null,
+                    "relative_minutes_offset": -60,
+                    "original_clause": "Carriers are required to comply with Shipper specific PPE policies",
+                    "notification_start_event": "Status"
+                }
+            }
+        ]
+    },
+    "driver_dispatch_view": {
+        "pickup_instructions": "Peloton Interactive. FCFS 14:00-17:00. Report to shipping office. Must have Straps/Load Bars.",
+        "delivery_instructions": "Peloton c/o XPO Logistics. Appointment 07:00 AM Sharp. Live unload.",
+        "transit_requirements": [
+            "Use Transfix Mobile App for tracking",
+            "Do NOT partial this load",
+            "Do NOT break seal without permission"
+        ],
+        "special_equipment_needed": [
+            "53' Dry Van with Swing Doors",
+            "Straps or Load Bars Required",
+            "PPE (Safety Vest/Boots)"
+        ]
+    },
+    "driver_dispatch_instructions": [
+        {
+            "title_en": "App Tracking Required",
+            "title_punjab": "ਐਪ ਟਰੈਕਿੰਗ ਲਾਜ਼ਮੀ",
+            "description_en": "Download and use Transfix App. Keep it on to avoid issues.",
+            "description_punjab": "Transfix ਐਪ ਡਾਊਨਲੋਡ ਕਰੋ ਅਤੇ ਵਰਤੋ। ਸਮੱਸਿਆਵਾਂ ਤੋਂ ਬਚਣ ਲਈ ਇਸਨੂੰ ਚਾਲੂ ਰੱਖੋ।",
+            "trigger_type": "Absolute",
+            "deadline_iso": null,
+            "relative_minutes_offset": 0,
+            "original_clause": "The driver agrees to track continuously throughout the entirety of the shipment via the Transfix mobile app"
+        },
+        {
+            "title_en": "Load Bars Required",
+            "title_punjab": "ਲੋਡ ਬਾਰ ਜ਼ਰੂਰੀ ਹਨ",
+            "description_en": "You must have straps or load bars. No TONU if you arrive without them.",
+            "description_punjab": "ਤੁਹਾਡੇ ਕੋਲ ਪੱਟੇ ਜਾਂ ਲੋਡ ਬਾਰ ਹੋਣੇ ਚਾਹੀਦੇ ਹਨ। ਜੇ ਤੁਸੀਂ ਉਨ੍ਹਾਂ ਤੋਂ ਬਿਨਾਂ ਪਹੁੰਚਦੇ ਹੋ ਤਾਂ ਕੋਈ TONU ਨਹੀਂ ਮਿਲੇਗਾ।",
+            "trigger_type": "Absolute",
+            "deadline_iso": null,
+            "relative_minutes_offset": 0,
+            "original_clause": "STRAPS OR LOAD BARS ARE REQUIRED FOR THIS SHIPMENT"
+        },
+        {
+            "title_en": "PPE Required",
+            "title_punjab": "PPE ਦੀ ਲੋੜ ਹੈ",
+            "description_en": "Wear safety vest and boots at shipper and receiver.",
+            "description_punjab": "ਸ਼ਿਪਰ ਅਤੇ ਰਿਸੀਵਰ 'ਤੇ ਸੁਰੱਖਿਆ ਵੈਸਟ ਅਤੇ ਬੂਟ ਪਾਓ।",
+            "trigger_type": "Absolute",
+            "deadline_iso": null,
+            "relative_minutes_offset": 0,
+            "original_clause": "PPE Requirement"
+        }
+    ]
+}

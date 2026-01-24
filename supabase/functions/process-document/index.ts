@@ -6,7 +6,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { withLogging } from "../_shared/logger.ts";
 import { processDocumentWithAI } from "../_shared/document-processor.ts";
-import { authorizeUser } from "../_shared/auth.ts";
+import { authorizeRole } from "../_shared/utils.ts";
 
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -26,12 +26,12 @@ serve(async (req) => withLogging(req, async (req) => {
     }
 
     try {
-        // Verify User
-        await authorizeUser(req);
-
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+        // Verify User and Role
+        await authorizeRole(req, supabase, ['admin', 'owner', 'dispatcher', 'driver']);
 
         const body: ProcessRequest = await req.json();
         const { document_id, document_type, image_url } = body;
@@ -94,6 +94,7 @@ serve(async (req) => withLogging(req, async (req) => {
                 success: true,
                 document_id,
                 extracted_data: result.extractedData,
+                rate_con_id: result.rateConId, // This is the DB UUID
                 confidence: result.confidence,
                 llm_provider: result.modelUsed,
             }),

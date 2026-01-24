@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../data/models/risk_clause.dart';
+import '../../data/models/rate_con_model.dart';
 import '../../services/rate_con_service.dart';
 import '../themes/app_theme.dart';
 import '../widgets/rate_con_action_buttons.dart';
+
+import '../screens/trip_screens.dart'; // Import CreateTripScreen
 
 class RateConClausesScreen extends StatefulWidget {
   final String rateConId;
@@ -54,20 +57,49 @@ class _RateConClausesScreenState extends State<RateConClausesScreen> {
 
     if (confirmed != true) return;
 
+    // Ask to create trip
+    if (!mounted) return;
+    final createTrip = await showCreateTripDialog(context);
+    if (createTrip == null) return; // User cancelled the trip dialog
+
     setState(() => _isLoading = true);
 
     try {
-      await _service.approveRateCon(widget.rateConId, {});
+      final newLoadId = await _service.approveRateCon(widget.rateConId, {});
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Rate Confirmation Accepted'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      if (createTrip == true) {
+        // Fetch RateCon to get addresses for pre-filling
+        RateCon? rateCon;
+        try {
+          rateCon = await _service.getRateCon(widget.rateConId);
+        } catch (e) {
+          // Ignore fetch error, proceed with empty addresses
+          debugPrint('Failed to fetch rate con for addresses: $e');
+        }
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => CreateTripScreen(
+              originAddress: rateCon?.originAddress,
+              destinationAddress: rateCon?.destinationAddress,
+              loadId: newLoadId,
+              brokerName: rateCon?.brokerName,
+              rate: rateCon?.totalRateAmount,
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Rate Confirmation Accepted'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

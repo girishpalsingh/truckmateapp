@@ -1,11 +1,12 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/utils/app_logger.dart';
 
 /// Service for managing expenses
 class ExpenseService {
   final SupabaseClient _client;
 
   ExpenseService({SupabaseClient? client})
-    : _client = client ?? Supabase.instance.client;
+      : _client = client ?? Supabase.instance.client;
 
   /// Create an expense
   Future<Expense> createExpense({
@@ -23,27 +24,34 @@ class ExpenseService {
     String? receiptImagePath,
     String? notes,
   }) async {
-    final response = await _client
-        .from('expenses')
-        .insert({
-          'organization_id': organizationId,
-          'trip_id': tripId,
-          'category': category,
-          'amount': amount,
-          'currency': currency,
-          'vendor_name': vendorName,
-          'jurisdiction': jurisdiction,
-          'gallons': gallons,
-          'price_per_gallon': pricePerGallon,
-          'date': (date ?? DateTime.now()).toIso8601String().split('T')[0],
-          'is_reimbursable': isReimbursable,
-          'receipt_image_path': receiptImagePath,
-          'notes': notes,
-        })
-        .select()
-        .single();
+    AppLogger.i(
+        'ExpenseService: Creating expense (category: $category, amount: $amount)');
+    try {
+      final response = await _client
+          .from('expenses')
+          .insert({
+            'organization_id': organizationId,
+            'trip_id': tripId,
+            'category': category,
+            'amount': amount,
+            'currency': currency,
+            'vendor_name': vendorName,
+            'jurisdiction': jurisdiction,
+            'gallons': gallons,
+            'price_per_gallon': pricePerGallon,
+            'date': (date ?? DateTime.now()).toIso8601String().split('T')[0],
+            'is_reimbursable': isReimbursable,
+            'receipt_image_path': receiptImagePath,
+            'notes': notes,
+          })
+          .select()
+          .single();
 
-    return Expense.fromJson(response);
+      return Expense.fromJson(response);
+    } catch (e, stack) {
+      AppLogger.e('ExpenseService: Error creating expense', e, stack);
+      rethrow;
+    }
   }
 
   /// Get expenses for an organization
@@ -56,13 +64,11 @@ class ExpenseService {
     DateTime? toDate,
     int limit = 100,
   }) async {
-    var query = _client
-        .from('expenses')
-        .select('''
+    AppLogger.d('ExpenseService: Fetching expenses (org: $organizationId)');
+    var query = _client.from('expenses').select('''
           *,
           trip:trips(origin_address, destination_address)
-        ''')
-        .eq('organization_id', organizationId);
+        ''').eq('organization_id', organizationId);
 
     if (tripId != null) {
       query = query.eq('trip_id', tripId);
@@ -150,19 +156,32 @@ class ExpenseService {
     String expenseId,
     Map<String, dynamic> updates,
   ) async {
-    final response = await _client
-        .from('expenses')
-        .update(updates)
-        .eq('id', expenseId)
-        .select()
-        .single();
+    try {
+      final response = await _client
+          .from('expenses')
+          .update(updates)
+          .eq('id', expenseId)
+          .select()
+          .single();
 
-    return Expense.fromJson(response);
+      return Expense.fromJson(response);
+    } catch (e, stack) {
+      AppLogger.e(
+          'ExpenseService: Error updating expense $expenseId', e, stack);
+      rethrow;
+    }
   }
 
   /// Delete expense
   Future<void> deleteExpense(String expenseId) async {
-    await _client.from('expenses').delete().eq('id', expenseId);
+    AppLogger.w('ExpenseService: Deleting expense $expenseId');
+    try {
+      await _client.from('expenses').delete().eq('id', expenseId);
+    } catch (e, stack) {
+      AppLogger.e(
+          'ExpenseService: Error deleting expense $expenseId', e, stack);
+      rethrow;
+    }
   }
 }
 

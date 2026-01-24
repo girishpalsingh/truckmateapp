@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/auth_service.dart';
 import '../../config/app_config.dart';
 import '../../core/utils/user_utils.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import 'auth_state.dart';
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
@@ -14,7 +15,42 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   AuthNotifier({AuthService? authService})
       : _authService = authService ?? AuthService(),
-        super(const AuthState());
+        super(const AuthState()) {
+    _initializeAuthListener();
+  }
+
+  /// Listens to Supabase Auth state changes (sign-in, sign-out, token refresh)
+  void _initializeAuthListener() {
+    sb.Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
+      final sb.AuthChangeEvent event = data.event;
+      final sb.Session? session = data.session;
+
+      debugPrint('🔔 Supabase Auth Event: $event');
+
+      switch (event) {
+        case sb.AuthChangeEvent.signedIn:
+        case sb.AuthChangeEvent.tokenRefreshed:
+          if (session?.user != null) {
+            // Ensure internal state is authenticated
+            if (state.status != AuthStatus.authenticated) {
+              state = state.copyWith(status: AuthStatus.authenticated);
+            }
+            // Optionally refresh profile here if needed
+          }
+          break;
+        case sb.AuthChangeEvent.signedOut:
+        case sb.AuthChangeEvent.userDeleted:
+          // Synchronize logout if we weren't already aware
+          if (state.status != AuthStatus.unauthenticated) {
+            await UserUtils.clearAllUserData();
+            state = const AuthState(status: AuthStatus.unauthenticated);
+          }
+          break;
+        default:
+          break;
+      }
+    });
+  }
 
   /// Checks for an existing session using UserUtils.
   Future<void> checkSession() async {

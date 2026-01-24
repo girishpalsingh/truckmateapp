@@ -50,6 +50,7 @@ dependencies:
   flutter_svg: ^2.0.9
   cached_network_image: ^3.3.1
   shimmer: ^3.0.0
+  syncfusion_flutter_pdfviewer: ^28.2.3-beta
   
   # Location & Maps
   geolocator: ^10.1.0

@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:convert';
+import '../core/utils/app_logger.dart';
 
 /// Service for local document storage with caching
 /// Keeps last 20 documents locally for faster access
@@ -67,7 +68,7 @@ class LocalDocumentStorage {
 
     await prefs.setStringList(_webDocumentsListKey, docsList);
 
-    debugPrint('📁 [Web] Document saved: $fileName');
+    AppLogger.d('📁 [Web] Document saved: $fileName');
     return 'web://$fileName'; // Virtual path for web
   }
 
@@ -78,7 +79,7 @@ class LocalDocumentStorage {
     final file = File(filePath);
     await file.writeAsBytes(bytes);
 
-    debugPrint('📁 Document saved locally: $filePath');
+    AppLogger.d('📁 Document saved locally: $filePath');
 
     // Cleanup old files beyond cache limit
     await _cleanupOldFiles();
@@ -187,12 +188,12 @@ class LocalDocumentStorage {
           final file = files[i];
           if (file is File) {
             await file.delete();
-            debugPrint('🗑️ Cleaned up old document: ${file.path}');
+            AppLogger.d('🗑️ Cleaned up old document: ${file.path}');
           }
         }
       }
-    } catch (e) {
-      debugPrint('⚠️ Error cleaning up old files: $e');
+    } catch (e, stack) {
+      AppLogger.w('⚠️ Error cleaning up old files', e, stack);
     }
   }
 
@@ -218,19 +219,19 @@ class LocalDocumentStorage {
         docsList.remove(fileName);
         await prefs.setStringList(_webDocumentsListKey, docsList);
 
-        debugPrint('🗑️ [Web] Document deleted: $fileName');
+        AppLogger.d('🗑️ [Web] Document deleted: $fileName');
         return true;
       } else {
         final file = File(localPath);
         if (await file.exists()) {
           await file.delete();
-          debugPrint('🗑️ Document deleted: $localPath');
+          AppLogger.d('🗑️ Document deleted: $localPath');
           return true;
         }
         return false;
       }
-    } catch (e) {
-      debugPrint('❌ Error deleting document: $e');
+    } catch (e, stack) {
+      AppLogger.e('Error deleting document', e, stack);
       return false;
     }
   }
@@ -244,12 +245,12 @@ class LocalDocumentStorage {
         await prefs.remove('$_webDocumentsKey:$fileName');
       }
       await prefs.remove(_webDocumentsListKey);
-      debugPrint('🗑️ [Web] Document cache cleared');
+      AppLogger.d('🗑️ [Web] Document cache cleared');
     } else {
       final dir = await _documentsDir;
       if (await dir.exists()) {
         await dir.delete(recursive: true);
-        debugPrint('🗑️ Document cache cleared');
+        AppLogger.d('🗑️ Document cache cleared');
       }
     }
   }

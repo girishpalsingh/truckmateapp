@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../providers/notification_provider.dart';
 import '../../data/models/app_notification.dart';
 import 'rate_con_analysis_screen.dart';
+import 'pdf_viewer_screen.dart';
 
 class NotificationScreen extends ConsumerStatefulWidget {
   const NotificationScreen({super.key});
@@ -47,6 +48,19 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
           debugPrint(
               'Could not find rate_confirmation_id in notification data: ${notification.data}');
         }
+      } else if (type == 'dispatch_sheet') {
+        final path = notification.data!['path'];
+        final url = notification.data!['url'];
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PdfViewerScreen(
+              title: 'Dispatcher Sheet',
+              storagePath: path,
+              url: url,
+            ),
+          ),
+        );
       }
     }
   }
