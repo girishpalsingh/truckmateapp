@@ -27,6 +27,10 @@ export const config = {
             api_key: Deno.env.get("GEMINI_API_KEY") ?? appConfig.llm.gemini.api_key,
             model: appConfig.llm.gemini.model,
         }
+    },
+    pdfservice: {
+        browserUrl: Deno.env.get("BROWSER_WS_URL") ?? appConfig.pdfservice.browserUrl,
+        browserToken: Deno.env.get("BROWSER_TOKEN") ?? appConfig.pdfservice.browserToken,
     }
 };
 

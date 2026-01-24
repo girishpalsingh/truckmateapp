@@ -1,7 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
-import { generateDispatchSheetPDF } from './dispatch-sheet-template.ts';
+import Handlebars from "https://esm.sh/handlebars@4.7.7";
 import { withLogging } from "../_shared/logger.ts";
 import { NotificationService } from "../_shared/notification-service.ts";
 import { authorizeRole } from "../_shared/utils.ts";
@@ -11,11 +11,6 @@ const corsHeaders = {
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface RequestBody {
-    load_id?: string;
-    organization_id: string; // usually inferred from auth but good to have explicit
-}
-
 serve(async (req) => withLogging(req, async (req) => {
     if (req.method === "OPTIONS") {
         return new Response(null, { headers: corsHeaders });
@@ -24,9 +19,12 @@ serve(async (req) => withLogging(req, async (req) => {
     try {
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        // Config: URL of your PDF Microservice
+        const PDF_SERVICE_URL = Deno.env.get("PDF_SERVICE_URL") || `${supabaseUrl}/functions/v1/generate-pdf`;
+
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-        // Verify User and Role in one step
+        // Verify User and Role
         const profile = await authorizeRole(req, supabase, ['dispatcher', 'admin', 'owner', 'driver']);
 
         const body: { trip_id?: string; load_id?: string } = await req.json();
@@ -40,7 +38,9 @@ serve(async (req) => withLogging(req, async (req) => {
         let contextId = trip_id || load_id!;
         let organizationId = "";
 
+        // ---------------------------------------------------------
         // 1. Fetch Data
+        // ---------------------------------------------------------
         if (trip_id) {
             console.log(`Fetching loads for Trip: ${trip_id}`);
             const { data: tripData, error: tripError } = await supabase
@@ -61,7 +61,6 @@ serve(async (req) => withLogging(req, async (req) => {
 
             if (tripError) throw tripError;
 
-            // Extract valid rate confirmations
             rateCons = tripData
                 .map((t: any) => t.loads?.rate_confirmations)
                 .filter((r: any) => r !== null && r !== undefined);
@@ -72,10 +71,8 @@ serve(async (req) => withLogging(req, async (req) => {
         }
 
         if (rateCons.length === 0 && load_id) {
-            console.log(`Fetching Rate Con directly for Load/RC ID: ${load_id}`);
-            // Fallback: Check if load_id is actually a rate_con_id (legacy) OR a loads.id
-            // First try as rate_con_id (Legacy support for current tests)
-            const { data: rc, error: rcError } = await supabase
+            // Fallback logic for direct Load ID
+            const { data: rc } = await supabase
                 .from('rate_confirmations')
                 .select('*, stops(*), rate_con_dispatcher_instructions(*)')
                 .eq('id', load_id)
@@ -85,7 +82,6 @@ serve(async (req) => withLogging(req, async (req) => {
                 rateCons = [rc];
                 organizationId = rc.organization_id;
             } else {
-                // Try as loads.id
                 const { data: loadData } = await supabase
                     .from('loads')
                     .select(`
@@ -111,21 +107,13 @@ serve(async (req) => withLogging(req, async (req) => {
             throw new Error("No rate confirmations found for the provided ID");
         }
 
+        // ---------------------------------------------------------
         // 2. Aggregate Data
-        // Merge stops
+        // ---------------------------------------------------------
         let allStops: any[] = [];
-        rateCons.forEach(rc => {
-            if (rc.stops) allStops = allStops.concat(rc.stops);
-        });
+        rateCons.forEach(rc => { if (rc.stops) allStops = allStops.concat(rc.stops); });
+        allStops.sort((a, b) => new Date(a.scheduled_arrival || 0).getTime() - new Date(b.scheduled_arrival || 0).getTime());
 
-        // Sort stops by scheduled_arrival
-        allStops.sort((a, b) => {
-            const dateA = new Date(a.scheduled_arrival || 0).getTime();
-            const dateB = new Date(b.scheduled_arrival || 0).getTime();
-            return dateA - dateB;
-        });
-
-        // Merge Instructions and Driver View
         let allInstructions: any[] = [];
         let combinedDriverView: any = { special_equipment_needed: [], transit_requirements: [] };
 
@@ -134,51 +122,182 @@ serve(async (req) => withLogging(req, async (req) => {
                 allInstructions = allInstructions.concat(rc.rate_con_dispatcher_instructions);
             }
             if (rc.driver_view_data) {
-                if (rc.driver_view_data.special_equipment_needed) {
-                    combinedDriverView.special_equipment_needed.push(...rc.driver_view_data.special_equipment_needed);
-                }
-                if (rc.driver_view_data.transit_requirements) {
-                    combinedDriverView.transit_requirements.push(...rc.driver_view_data.transit_requirements);
-                }
+                combinedDriverView.special_equipment_needed.push(...(rc.driver_view_data.special_equipment_needed || []));
+                combinedDriverView.transit_requirements.push(...(rc.driver_view_data.transit_requirements || []));
             }
         });
 
-        // Deduplicate simple arrays in driver view
+        // Deduplicate
         combinedDriverView.special_equipment_needed = [...new Set(combinedDriverView.special_equipment_needed)];
         combinedDriverView.transit_requirements = [...new Set(combinedDriverView.transit_requirements)];
 
 
-        // 3. Generate PDF
-        const pdfBytes = await generateDispatchSheetPDF({
-            rateConId: rateCons.map(r => r.rate_con_id).join(', '), // Combined Ref
-            brokerName: rateCons.map(r => r.broker_name).filter(Boolean).join(' & '),
-            stops: allStops,
-            dispatchInstructions: allInstructions,
-            loadId: contextId,
-            driverView: combinedDriverView
-        });
+        // ---------------------------------------------------------
+        // 2.1 Fetch Organization Details
+        // ---------------------------------------------------------
+        const { data: orgData } = await supabase
+            .from('organizations')
+            .select('name, registered_address, logo_image_link')
+            .eq('id', organizationId)
+            .maybeSingle();
 
-        // 4. Upload to Storage
-        // New Path: organization/trip_id/dispatch_documents/dispatcher_sheet.pdf
-        const folderPath = trip_id ? `${organizationId}/${trip_id}/dispatch_documents` : `${organizationId}/${contextId}/dispatch_documents`;
-        const fileName = `${folderPath}/dispatcher_sheet.pdf`;
-
-        console.log(`Uploading to: ${fileName}`);
-
-        const { data: uploadData, error: uploadError } = await supabase
-            .storage
-            .from('documents')
-            .upload(fileName, pdfBytes, {
-                contentType: 'application/pdf',
-                upsert: true
-            });
-
-        if (uploadError) {
-            console.error("Upload error:", uploadError);
-            throw new Error("Failed to upload dispatcher sheet");
+        let orgLogoUrl = '';
+        if (orgData?.logo_image_link) {
+            if (orgData.logo_image_link.startsWith('http')) {
+                orgLogoUrl = orgData.logo_image_link;
+            } else {
+                // Try 'assets' bucket first (user preferred), then 'public'
+                try {
+                    const { data: signedLogo, error } = await supabase.storage.from('assets').createSignedUrl(orgData.logo_image_link, 3600);
+                    if (signedLogo) {
+                        orgLogoUrl = signedLogo.signedUrl;
+                    } else if (error) {
+                        console.log("Logo signing error (assets bucket), trying public:", error.message);
+                        // Fallback to public
+                        const { data: signedLogoPublic, error: errorPublic } = await supabase.storage.from('public').createSignedUrl(orgData.logo_image_link, 3600);
+                        if (signedLogoPublic) orgLogoUrl = signedLogoPublic.signedUrl;
+                    }
+                } catch (e) {
+                    console.log("Logo signing exception:", e);
+                }
+            }
         }
 
-        // 5. Create Document Record & Link
+        // Fallback for testing if logo is missing
+        if (!orgLogoUrl) {
+            orgLogoUrl = "https://placehold.co/200x60?text=Logo+Missing";
+        }
+
+        // Fix for local simulator (Kong internal host)
+        if (orgLogoUrl && orgLogoUrl.includes('http://kong:8000')) {
+            orgLogoUrl = orgLogoUrl.replace('http://kong:8000', 'http://127.0.0.1:54321');
+        }
+
+        const formatAddress = (addr: any) => {
+            if (!addr) return '';
+            if (typeof addr === 'string') return addr;
+            const line1 = addr.address_line1 || addr.street || '';
+            const city = addr.city || '';
+            const state = addr.state || addr.province || '';
+            const zip = addr.zip || addr.postal_code || '';
+            // Use <br/> for HTML line break to be handled by triple-stash {{{ }}} in Handlebars
+            return [line1, `${city}, ${state} ${zip}`].filter(Boolean).join('<br/>');
+        };
+        const orgAddress = formatAddress(orgData?.registered_address);
+        const orgName = orgData?.name || 'TruckMate';
+        console.log("DEBUG LOGO URL:", orgLogoUrl);
+
+
+        // ---------------------------------------------------------
+        // 3. Prepare HTML with Handlebars
+        // ---------------------------------------------------------
+
+        const { dispatchSheetTemplate } = await import('./templates/dispatch-sheet-template.ts');
+
+        // Helper to format date
+        const formatDate = (d: string) => d ? new Date(d).toLocaleString() : 'TBD';
+
+        const stopsMapped = allStops.map((stop: any) => {
+            const badgeClass = stop.stop_type?.toLowerCase().includes('pickup') ? 'bg-pickup' :
+                stop.stop_type?.toLowerCase().includes('delivery') ? 'bg-delivery' : 'bg-other';
+
+            let cityState = stop.city && stop.state ? `${stop.city}, ${stop.state}` : '';
+
+            if (!cityState && stop.address) {
+                // Fallback: Try to parse "City, State Zip" from address string
+                // Example: "1500 Blair Rd, Carteret, NJ 07008"
+                const parts = stop.address.split(',').map((p: string) => p.trim());
+                if (parts.length >= 2) {
+                    // Assume format: [..., City, State Zip]
+                    const stateZip = parts[parts.length - 1]; // "NJ 07008"
+                    const city = parts[parts.length - 2];     // "Carteret"
+
+                    // Extract state from "NJ 07008" -> "NJ"
+                    const stateParts = stateZip.split(' ');
+                    const state = stateParts[0];
+
+                    if (city && state) {
+                        cityState = `${city}, ${state}`;
+                    }
+                }
+            }
+
+            if (!cityState) cityState = 'Location TBD';
+
+            return {
+                badgeClass,
+                stopType: stop.stop_type,
+                cityState,
+                address: stop.address || '',
+                scheduledArrival: formatDate(stop.scheduled_arrival),
+                notes: stop.special_instructions || stop.notes || '-'
+            };
+        });
+
+        const instructionsMapped = allInstructions.map((i: any) => ({
+            title_en: i.title_en || 'Instruction',
+            description_en: i.description_en || '',
+            hasPunjabi: !!(i.title_punjab || i.description_punjab),
+            title_punjab: i.title_punjab || '',
+            description_punjab: i.description_punjab || ''
+        }));
+
+        const templateData = {
+            orgLogoUrl,
+            orgName,
+            orgAddress,
+            refIds: rateCons.map(r => r.rate_con_id).join(', '),
+            brokerName: rateCons.map(r => r.broker_name).filter(Boolean).join(' & '),
+            generatedDate: new Date().toLocaleString(),
+            stops: stopsMapped,
+            equipment: combinedDriverView.special_equipment_needed.join(', '),
+            transit: combinedDriverView.transit_requirements.join(', '),
+            instructions: instructionsMapped
+        };
+
+        const compiledTemplate = Handlebars.compile(dispatchSheetTemplate);
+        const htmlContent = compiledTemplate(templateData);
+
+        console.log("DEBUG HTML CONTENT LEN:", htmlContent.length);
+
+        // ---------------------------------------------------------
+        // 4. Call PDF Microservice
+        // ---------------------------------------------------------
+
+        // Define path explicitly (Microservice needs to know WHERE to put it)
+        const folderPath = trip_id
+            ? `${organizationId}/${trip_id}/dispatch_documents`
+            : `${organizationId}/${contextId}/dispatch_documents`;
+        const fileName = `${folderPath}/dispatcher_sheet.pdf`;
+
+        console.log(`Calling PDF Service for: ${fileName}`);
+
+        const pdfResponse = await fetch(PDF_SERVICE_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                // Pass Service Role Key to bypass Gateway/Auth checks in the Microservice
+                "Authorization": `Bearer ${supabaseServiceKey}`
+            },
+            body: JSON.stringify({
+                bucketName: "documents", // Target Bucket
+                uploadPath: fileName,    // Target Path
+                html: htmlContent,
+                css: "" // Included in template
+            })
+        });
+
+        if (!pdfResponse.ok) {
+            const errText = await pdfResponse.text();
+            throw new Error(`PDF Service Failed [${pdfResponse.status}]: ${errText}`);
+        }
+
+        const pdfResult = await pdfResponse.json();
+        console.log(`PDF Service Success: ${pdfResult.fullUrl}`);
+
+        // ---------------------------------------------------------
+        // 5. Create Document Record
+        // ---------------------------------------------------------
         const { data: docRecord, error: docError } = await supabase
             .from('documents')
             .insert({
@@ -196,16 +315,12 @@ serve(async (req) => withLogging(req, async (req) => {
 
         if (docError) console.error("Error creating document record:", docError);
 
-        // Link to Trip if applicable
+        // Link to Trip
         if (trip_id && docRecord) {
-            const { error: tripUpdateError } = await supabase
-                .from('trips')
-                .update({ dispatch_document_id: docRecord.id })
-                .eq('id', trip_id);
-            if (tripUpdateError) console.error("Error linking doc to trip:", tripUpdateError);
+            await supabase.from('trips').update({ dispatch_document_id: docRecord.id }).eq('id', trip_id);
         }
 
-        // Legacy: Update load_dispatch_config if load_id used
+        // Legacy Config Update
         if (load_id) {
             await supabase.from('load_dispatch_config').upsert({
                 load_id: load_id,
@@ -215,44 +330,31 @@ serve(async (req) => withLogging(req, async (req) => {
             }, { onConflict: 'load_id' });
         }
 
-
-        // 6. Generate Signed URL (30 Days)
-        const expirationSeconds = 30 * 24 * 3600; // 30 days
-        const { data: signedUrlData, error: signedUrlError } = await supabase
+        // ---------------------------------------------------------
+        // 6. Generate Signed URL
+        // ---------------------------------------------------------
+        const { data: signedUrlData } = await supabase
             .storage
             .from('documents')
-            .createSignedUrl(fileName, expirationSeconds);
-
-        if (signedUrlError) {
-            console.error("Error creating signed URL:", signedUrlError);
-        }
+            .createSignedUrl(fileName, 30 * 24 * 3600);
 
         let finalUrl = signedUrlData?.signedUrl || fileName;
 
-        // Fix for local development: Replace kong:8000 with a reachable address for the simulator
+        // Fix for local simulator
         if (finalUrl.includes('http://kong:8000')) {
-            // Standard mapping: kong:8000 (inside Docker) -> 127.0.0.1:54321 (outside for simulator)
-            // We use 127.0.0.1:54321 which is the default Supabase local gateway port
             finalUrl = finalUrl.replace('http://kong:8000', 'http://127.0.0.1:54321');
-            console.log(`Local Supabase detected. Proactively replaced kong:8000 with reachable simulator address.`);
         }
 
-        console.log(`Dispatcher Sheet Generated: ${finalUrl}`);
-
+        // ---------------------------------------------------------
         // 7. Send Notification
+        // ---------------------------------------------------------
         const notificationService = new NotificationService(supabase);
         await notificationService.sendNotification({
             userId: profile.id,
             organizationId: organizationId,
             title: "Dispatcher Sheet Ready",
             body: `Dispatch sheet has been generated.`,
-            data: {
-                trip_id: trip_id,
-                load_id: load_id,
-                action: 'open_dispatch_sheet',
-                url: finalUrl,
-                path: fileName
-            },
+            data: { trip_id, load_id, action: 'open_dispatch_sheet', url: finalUrl, path: fileName },
             type: 'dispatch_sheet'
         });
 
@@ -262,7 +364,8 @@ serve(async (req) => withLogging(req, async (req) => {
                 message: "Dispatcher sheet created",
                 url: finalUrl,
                 path: fileName,
-                document_id: docRecord?.id
+                document_id: docRecord?.id,
+                html_debug: htmlContent // Debugging aid
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );

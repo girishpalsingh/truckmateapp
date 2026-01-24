@@ -75,20 +75,16 @@ async function handleSendOtp(
   }
 
   // Send OTP
-  if (config.development.enabled && config.development.skip_twilio) {
-    console.log(`[Dev] Skipping Twilio for ${phoneNumber}, assume default OTP.`);
-  } else {
-    const { error } = await supabase.auth.signInWithOtp({
-      phone: phoneNumber,
-      options: {
-        shouldCreateUser: false,
-      }
-    });
-
-    if (error) {
-      console.log(error);
-      throw error;
+  const { error } = await supabase.auth.signInWithOtp({
+    phone: phoneNumber,
+    options: {
+      shouldCreateUser: false,
     }
+  });
+
+  if (error) {
+    console.log(error);
+    throw error;
   }
 
 

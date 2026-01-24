@@ -4,10 +4,10 @@
 -- ============================================
 -- 1. ORGANIZATIONS
 -- ============================================
-INSERT INTO organizations (id, name, legal_entity_name, mc_dot_number, tax_id, llm_provider, approval_email_address)
+INSERT INTO organizations (id, name, legal_entity_name, mc_dot_number, tax_id, llm_provider, approval_email_address, registered_address, mailing_address, logo_image_link)
 VALUES 
-  ('11111111-1111-1111-1111-111111111111', 'Highway Heroes Trucking', 'Highway Heroes Trucking LLC', 'MC-123456', '12-3456789', 'gemini', 'invoices@highwayherostrucking.com'),
-  ('11111111-1111-1111-1111-111111111112', 'Pacific Coast Freight', 'Pacific Coast Freight Inc', 'MC-234567', '23-4567890', 'gemini', 'invoices@pacificcoastfreight.com')
+  ('11111111-1111-1111-1111-111111111111', 'Highway Heroes Trucking', 'Highway Heroes Trucking LLC', 'MC-123456', '12-3456789', 'gemini', 'invoices@highwayherostrucking.com', '{"address_line1": "123 Trucker Lane", "city": "Fresno", "state": "CA", "zip": "93706", "country": "USA"}', '{"address_line1": "PO Box 99", "city": "Fresno", "state": "CA", "zip": "93706", "country": "USA"}', 'logos/highway_heroes.png'),
+  ('11111111-1111-1111-1111-111111111112', 'Pacific Coast Freight', 'Pacific Coast Freight Inc', 'MC-234567', '23-4567890', 'gemini', 'invoices@pacificcoastfreight.com', '{"address_line1": "456 Ocean Blvd", "city": "Seattle", "state": "WA", "zip": "98101", "country": "USA"}', '{"address_line1": "456 Ocean Blvd", "city": "Seattle", "state": "WA", "zip": "98101", "country": "USA"}', NULL)
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================
