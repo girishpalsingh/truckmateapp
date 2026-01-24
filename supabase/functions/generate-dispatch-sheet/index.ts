@@ -137,7 +137,7 @@ serve(async (req) => withLogging(req, async (req) => {
         // ---------------------------------------------------------
         const { data: orgData } = await supabase
             .from('organizations')
-            .select('name, registered_address, logo_image_link')
+            .select('name, registered_address, logo_image_link, mc_dot_number')
             .eq('id', organizationId)
             .maybeSingle();
 
@@ -185,6 +185,7 @@ serve(async (req) => withLogging(req, async (req) => {
         };
         const orgAddress = formatAddress(orgData?.registered_address);
         const orgName = orgData?.name || 'TruckMate';
+        const mcDotNumber = orgData?.mc_dot_number || '';
         console.log("DEBUG LOGO URL:", orgLogoUrl);
 
 
@@ -194,19 +195,27 @@ serve(async (req) => withLogging(req, async (req) => {
 
         const { dispatchSheetTemplate } = await import('./templates/dispatch-sheet-template.ts');
 
-        // Helper to format date
-        const formatDate = (d: string) => d ? new Date(d).toLocaleString() : 'TBD';
+        // Helper to format date in PST
+        const formatDate = (d: string) => {
+            if (!d) return 'TBD';
+            return new Date(d).toLocaleString('en-US', {
+                timeZone: 'America/Los_Angeles',
+                year: 'numeric', month: 'numeric', day: 'numeric',
+                hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+            });
+        };
 
         const stopsMapped = allStops.map((stop: any) => {
             const badgeClass = stop.stop_type?.toLowerCase().includes('pickup') ? 'bg-pickup' :
                 stop.stop_type?.toLowerCase().includes('delivery') ? 'bg-delivery' : 'bg-other';
 
             let cityState = stop.city && stop.state ? `${stop.city}, ${stop.state}` : '';
+            const addressRaw = stop.address || '';
 
-            if (!cityState && stop.address) {
+            if (!cityState && addressRaw) {
                 // Fallback: Try to parse "City, State Zip" from address string
                 // Example: "1500 Blair Rd, Carteret, NJ 07008"
-                const parts = stop.address.split(',').map((p: string) => p.trim());
+                const parts = addressRaw.split(',').map((p: string) => p.trim());
                 if (parts.length >= 2) {
                     // Assume format: [..., City, State Zip]
                     const stateZip = parts[parts.length - 1]; // "NJ 07008"
@@ -224,11 +233,14 @@ serve(async (req) => withLogging(req, async (req) => {
 
             if (!cityState) cityState = 'Location TBD';
 
+            const mapLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressRaw || cityState)}`;
+
             return {
                 badgeClass,
                 stopType: stop.stop_type,
                 cityState,
-                address: stop.address || '',
+                address: addressRaw,
+                mapLink,
                 scheduledArrival: formatDate(stop.scheduled_arrival),
                 notes: stop.special_instructions || stop.notes || '-'
             };
@@ -246,9 +258,11 @@ serve(async (req) => withLogging(req, async (req) => {
             orgLogoUrl,
             orgName,
             orgAddress,
+            mcDotNumber,
+            tripId: trip_id || '-',
             refIds: rateCons.map(r => r.rate_con_id).join(', '),
             brokerName: rateCons.map(r => r.broker_name).filter(Boolean).join(' & '),
-            generatedDate: new Date().toLocaleString(),
+            generatedDate: new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }),
             stops: stopsMapped,
             equipment: combinedDriverView.special_equipment_needed.join(', '),
             transit: combinedDriverView.transit_requirements.join(', '),
