@@ -18,6 +18,9 @@ export const config = {
         auth_token: Deno.env.get("TWILIO_AUTH_TOKEN") ?? appConfig.twilio.auth_token,
         phone_number: Deno.env.get("TWILIO_PHONE_NUMBER") ?? appConfig.twilio.phone_number,
     },
+    fcm: {
+        server_key: Deno.env.get("FCM_SERVER_KEY") ?? appConfig.fcm.server_key,
+    },
     resend: {
         api_key: Deno.env.get("RESEND_API_KEY") ?? appConfig.resend.api_key,
         from_email: Deno.env.get("RESEND_FROM_EMAIL") ?? appConfig.resend.from_email,

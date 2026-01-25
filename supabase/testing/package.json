@@ -7,8 +7,9 @@
     "test": "ts-node test_e2e.ts"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
-    "dotenv": "^16.3.1"
+    "@supabase/supabase-js": "^2.91.1",
+    "dotenv": "^16.3.1",
+    "resend": "^6.8.0"
   },
   "devDependencies": {
     "ts-node": "^10.9.1",
