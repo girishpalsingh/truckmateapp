@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/rate_con_model.dart';
+import '../../data/models/stop.dart';
 import '../../services/rate_con_service.dart';
 import '../themes/app_theme.dart';
 import 'rate_con_clauses_screen.dart';
@@ -48,6 +49,99 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  void _showSummary() {
+    if (_rateCon == null) return;
+
+    final rc = _rateCon!;
+    final buffer = StringBuffer();
+
+    // Header
+    buffer.writeln('📄 RATE CONFIRMATION SUMMARY');
+    buffer.writeln('📄 ਰੇਟ ਕਨਫਰਮੇਸ਼ਨ ਦਾ ਸੰਖੇਪ (Rate Confirmation Summary)\n');
+
+    buffer.writeln('📌 Load Details (ਲੋਡ ਵੇਰਵੇ):');
+    buffer.writeln('• Broker (ਬ੍ਰੋਕਰ): ${rc.brokerName ?? "Unknown (ਅਣਜਾਣ)"}');
+    buffer.writeln('• Load ID (ਲੋਡ ਨੰਬਰ): ${rc.loadId ?? "N/A"}');
+    buffer.writeln('');
+
+    // Financials
+    buffer.writeln('💰 Commercial Info (ਵਪਾਰਕ ਜਾਣਕਾਰੀ):');
+    buffer.writeln(
+        '• Total Rate (ਕੁੱਲ ਰੇਟ): ${rc.displayTotalRate} ${rc.currency}');
+    if (rc.paymentTerms != null && rc.paymentTerms!.isNotEmpty) {
+      buffer
+          .writeln('• Payment Terms (ਭੁਗਤਾਨ ਦੀਆਂ ਸ਼ਰਤਾਂ): ${rc.paymentTerms}');
+    }
+    if (rc.charges.isNotEmpty) {
+      buffer.writeln('• Items (ਵੇਰਵਾ):');
+      for (var charge in rc.charges) {
+        final amount = charge.amount?.toStringAsFixed(2) ?? "0.00";
+        buffer.writeln('  - ${charge.description ?? "Charge"}: \$$amount');
+      }
+    }
+    buffer.writeln('');
+
+    // Stops
+    buffer.writeln('🚚 Route (ਰੂਟ):');
+    for (var stop in rc.stops) {
+      final type = stop.stopType == StopType.pickup
+          ? 'Pickup (ਚੁੱਕਣਾ)'
+          : 'Delivery (ਨਾਮਾ)';
+      final location = stop.address ?? 'Unknown';
+      final time = stop.displaySchedule;
+      buffer.writeln('• $type: $location');
+      if (time.isNotEmpty) buffer.writeln('  🕒 $time');
+    }
+    buffer.writeln('');
+
+    // Risk Clauses
+    if (rc.riskClauses.isNotEmpty) {
+      buffer.writeln('⚠️ Risk Analysis (ਖਤਰੇ ਦਾ ਵਿਸ਼ਲੇਸ਼ਣ):');
+      for (var clause in rc.riskClauses) {
+        final emoji = clause.trafficLightDisplay;
+        final title = clause.titleEn ?? 'Clause';
+        final titlePa = clause.titlePunjabi ?? '';
+        final desc = clause.explanationEn ?? '';
+        final descPa = clause.explanationPunjabi ?? '';
+
+        buffer.writeln('$emoji $title');
+        if (titlePa.isNotEmpty) buffer.writeln('   $titlePa');
+        if (desc.isNotEmpty) buffer.writeln('   📝 $desc');
+        if (descPa.isNotEmpty) buffer.writeln('   📝 $descPa');
+        buffer.writeln('');
+      }
+    } else {
+      buffer.writeln('✅ No significant risks found.');
+      buffer.writeln('✅ ਕੋਈ ਵੱਡਾ ਖਤਰਾ ਨਹੀਂ ਲੱਭਿਆ।');
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Document Summary'),
+        content: SingleChildScrollView(
+          child: Text(
+            buffer.toString(),
+            style: const TextStyle(fontSize: 16),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          TextButton(
+            onPressed: () {
+              // Implement Copy to Clipboard if needed, or just close for now
+              Navigator.pop(context);
+            },
+            child: const Text('OK'),
+          )
+        ],
+      ),
+    );
   }
 
   Future<void> _viewOriginalDocument() async {
@@ -246,6 +340,26 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 foregroundColor: Colors.blue.shade700,
                 side: BorderSide(color: Colors.blue.shade700, width: 2),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Action 4: View Summary
+            OutlinedButton.icon(
+              onPressed: _showSummary,
+              icon: const Icon(Icons.summarize),
+              label: const DualLanguageText(
+                primaryText: 'View Summary',
+                subtitleText: 'ਸੰਖੇਪ ਦੇਖੋ',
+                primaryStyle:
+                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                alignment: CrossAxisAlignment.center,
+              ),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 80),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                foregroundColor: Colors.purple.shade700,
+                side: BorderSide(color: Colors.purple.shade700, width: 2),
               ),
             ),
             const SizedBox(height: 48),

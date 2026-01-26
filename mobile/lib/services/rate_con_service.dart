@@ -106,12 +106,11 @@ class RateConService {
       // Map fields from Rate Con to Load
       final loadData = {
         'organization_id': rateConResponse['organization_id'],
-        'rate_confirmation_id': id,
-        'broker_name': rateConResponse['broker_name'],
-        'broker_load_id': rateConResponse['load_reference_number'],
-        'primary_rate': rateConResponse['total_rate_amount'] ??
-            rateConResponse['rate_amount'],
-        'status': 'assigned',
+        'active_rate_con_id':
+            rateConResponse['rc_id'], // Using SERIAL ID as per new schema
+        'final_revenue': rateConResponse['total_rate'],
+        // 'payment_status': 'PENDING',
+        'status': 'BOOKED',
         'created_at': DateTime.now().toIso8601String(),
       };
 
