@@ -4,24 +4,26 @@ class Charge {
   final String rateConfirmationId;
   final String? description;
   final double? amount;
-  final DateTime createdAt;
+  final DateTime? createdAt;
 
   Charge({
     required this.id,
     required this.rateConfirmationId,
     this.description,
     this.amount,
-    required this.createdAt,
+    this.createdAt,
   });
 
   factory Charge.fromJson(Map<String, dynamic> json) {
     return Charge(
-      id: json['id'],
+      id: json['charge_id']?.toString() ?? '',
       rateConfirmationId: json['rate_confirmation_id'],
       description: json['description'],
       amount:
           json['amount'] != null ? (json['amount'] as num).toDouble() : null,
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : null,
     );
   }
 
@@ -31,7 +33,7 @@ class Charge {
       'rate_confirmation_id': rateConfirmationId,
       'description': description,
       'amount': amount,
-      'created_at': createdAt.toIso8601String(),
+      'created_at': createdAt?.toIso8601String(),
     };
   }
 

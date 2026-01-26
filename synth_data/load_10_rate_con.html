@@ -1,0 +1,98 @@
+
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: 'Courier New', monospace; margin: 40px; color: #333; }
+          .header { display: flex; justify-content: space-between; border-bottom: 2px solid #333; padding-bottom: 20px; }
+          .title { font-size: 24px; font-weight: bold; text-transform: uppercase; }
+          .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+          .section { border: 1px solid #ddd; padding: 15px; border-radius: 4px; }
+          .section-title { font-weight: bold; background: #f0f0f0; padding: 5px; margin: -15px -15px 10px -15px; border-bottom: 1px solid #ddd; }
+          .stop { margin-bottom: 15px; border-left: 4px solid orange; padding-left: 10px; }
+          .financials { margin-top: 30px; font-size: 18px; font-weight: bold; text-align: right; }
+          .clauses { font-size: 12px; margin-top: 40px; color: #555; }
+          .danger { color: red; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <svg width="100" height="40" style="background:orange; border-radius:4px;">
+    <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="white" font-family="sans-serif" font-weight="bold">LOGO</text>
+  </svg>
+            <div style="margin-top:10px;">Echo Global</div>
+            <div>7176 Logistics Dr, Dallas, TX</div>
+            <div>MC: MC446944 | Ph: 555-305-3837</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="title">Rate Confirmation</div>
+            <div>Load #: LN466924</div>
+            <div>Date: 1/25/2026</div>
+          </div>
+        </div>
+
+        <div class="details-grid">
+          <div class="section">
+            <div class="section-title">Carrier</div>
+            <div>Schneider National</div>
+            <div>MC: MC637372</div>
+            <div>Equipment: Reefer</div>
+            <div>Driver: Assigned Driver</div>
+          </div>
+          <div class="section">
+             <div class="section-title">References</div>
+             <div><strong>PO #:</strong> PO63714</div>
+             <div><strong>BOL #:</strong> BOL-1534349</div>
+          </div>
+        </div>
+
+        <div class="section" style="margin-top:20px;">
+          <div class="section-title">Route</div>
+          <div class="stop">
+            <strong>PICKUP [1]</strong><br>
+            Shipper 38 Inc<br>
+            7844 Commerce Way, Seattle, WA 98101<br>
+            Date: 2026-01-30 @ 8:00 AM<br>
+            Commodity: Auto Parts (36748 lbs)
+          </div>
+          <div class="stop">
+            <strong>DELIVERY [2]</strong><br>
+            Receiver 39 LLC<br>
+            6368 Industrial Blvd, Atlanta, GA 30301<br>
+            Date: 2026-02-03 @ 2:00 PM
+          </div>
+        </div>
+
+        <div class="financials">
+          <table style="width:100%; border-collapse:collapse;">
+             <tr>
+               <td style="text-align:left;">Line Haul</td>
+               <td>$2549.70</td>
+             </tr>
+              <tr>
+               <td style="text-align:left;">Fuel Surcharge</td>
+               <td>$283.30</td>
+             </tr>
+             <tr style="background:#eee;">
+               <td style="text-align:left; padding:10px;"><strong>TOTAL RATE</strong></td>
+               <td style="padding:10px;"><strong>$2833.00</strong></td>
+             </tr>
+          </table>
+        </div>
+
+        <div class="section" style="margin-top:20px;">
+          <div class="section-title">Instructions</div>
+          <ul>
+            <li>No riders / passengers allowed.</li><li>No riders / passengers allowed.</li>
+          </ul>
+        </div>
+
+        <div class="clauses">
+          <strong>TERMS & CONDITIONS</strong><br>
+          <p>Any accessorial charges must be approved in writing.</p><p>Standard detention rate: $50/hour after 2 hours free time.</p><p>Standard 30 days payment terms.</p>
+          <p>Detention: First 2 hours free. $40/hr thereafter. <strong>MUST NOTIFY broker 1 hour before detention starts.</strong></p>
+        </div>
+      </body>
+      </html>
+    

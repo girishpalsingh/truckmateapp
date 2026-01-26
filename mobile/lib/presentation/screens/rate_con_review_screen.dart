@@ -108,7 +108,7 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
               destinationAddress: _rateCon!.destinationAddress,
               loadId: newLoadId,
               brokerName: _rateCon!.brokerName,
-              rate: _rateCon!.totalRateAmount,
+              rate: _rateCon!.totalRate,
             ),
           ),
         );
@@ -306,7 +306,7 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
                                             _rateCon!.destinationAddress,
                                         loadId: widget.rateConId,
                                         brokerName: _rateCon!.brokerName,
-                                        rate: _rateCon!.totalRateAmount,
+                                        rate: _rateCon!.totalRate,
                                       ),
                                     ),
                                   );
@@ -351,7 +351,7 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Rate Con #${_rateCon!.rateConId}',
+                      'Load #${_rateCon!.loadId ?? "N/A"}',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
@@ -396,7 +396,7 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
   }
 
   Color _getTrafficLightColor() {
-    switch (_rateCon!.overallTrafficLight) {
+    switch (_rateCon!.riskScore) {
       case RateConTrafficLight.red:
         return Colors.red;
       case RateConTrafficLight.yellow:
@@ -433,8 +433,7 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
       child: Column(
         children: [
           _buildEditableRow('Name', 'broker_name', _rateCon!.brokerName),
-          _buildEditableRow(
-              'MC Number', 'broker_mc_number', _rateCon!.brokerMcNumber),
+          _buildEditableRow('MC Number', 'broker_mc', _rateCon!.brokerMcNumber),
           _buildEditableRow(
               'Address', 'broker_address', _rateCon!.brokerAddress),
           _buildEditableRow('Phone', 'broker_phone', _rateCon!.brokerPhone),
@@ -452,11 +451,11 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
         children: [
           _buildEditableRow('Name', 'carrier_name', _rateCon!.carrierName),
           _buildEditableRow(
-              'DOT Number', 'carrier_dot_number', _rateCon!.carrierDotNumber),
-          _buildEditableRow(
-              'Address', 'carrier_address', _rateCon!.carrierAddress),
-          _buildEditableRow('Phone', 'carrier_phone', _rateCon!.carrierPhone),
-          _buildEditableRow('Email', 'carrier_email', _rateCon!.carrierEmail),
+              'DOT Number', 'carrier_dot', _rateCon!.carrierDotNumber),
+          // _buildEditableRow(
+          //     'Address', 'carrier_address', _rateCon!.carrierAddress),
+          // _buildEditableRow('Phone', 'carrier_phone', _rateCon!.carrierPhone),
+          // _buildEditableRow('Email', 'carrier_email', _rateCon!.carrierEmail),
           _buildEditableRow('Equipment', 'carrier_equipment_type',
               _rateCon!.carrierEquipmentType),
           _buildEditableRow('Equip #', 'carrier_equipment_number',
@@ -513,6 +512,24 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
                   _buildSimpleRow('Contact', stop.contactPerson!),
                 if (stop.phone != null) _buildSimpleRow('Phone', stop.phone!),
                 if (stop.email != null) _buildSimpleRow('Email', stop.email!),
+
+                // Commodities in Stop
+                if (stop.commodities.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const Text('Commodities:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  ...stop.commodities.map((c) => Padding(
+                        padding: const EdgeInsets.only(left: 8.0, top: 4.0),
+                        child: Text(
+                          '• ${c.description ?? 'Item'} '
+                          '(${c.weightLbs != null ? '${c.weightLbs} lbs' : ''}'
+                          '${c.quantity != null ? ', ${c.quantity} ${c.unitType ?? ''}' : ''})'
+                          '${c.tempReq != null ? ' [${c.tempReq}]' : ''}',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      )),
+                ],
+
                 if (stop.specialInstructions != null)
                   Container(
                     margin: const EdgeInsets.only(top: 8),
@@ -607,20 +624,25 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
   }
 
   Widget _buildCommoditySection() {
+    // Aggregated Commodity View
+    final allCommodities =
+        _rateCon!.stops.expand((s) => s.commodities).toList();
+
+    if (allCommodities.isEmpty) return const SizedBox.shrink();
+
     return _buildSection(
-      title: 'Commodity',
-      titlePunjabi: 'ਸਮਾਨ',
+      title: 'Commodity Summary',
+      titlePunjabi: 'ਸਮਾਨ ਦਾ ਵੇਰਵਾ',
       child: Column(
-        children: [
-          _buildEditableRow('Name', 'commodity_name', _rateCon!.commodityName),
-          _buildSimpleRow(
-              'Weight',
-              _rateCon!.commodityWeight != null
-                  ? '${_rateCon!.commodityWeight} ${_rateCon!.commodityUnit ?? 'lbs'}'
-                  : 'N/A'),
-          _buildSimpleRow(
-              'Pallets', _rateCon!.palletCount?.toString() ?? 'N/A'),
-        ],
+        children: allCommodities
+            .map(
+              (c) => _buildSimpleRow(
+                  'Item',
+                  '${c.description ?? 'General Freight'} '
+                      '(${c.weightLbs != null ? '${c.weightLbs} lbs' : ''}'
+                      '${c.tempReq != null ? ', Temp: ${c.tempReq}' : ''})'),
+            )
+            .toList(),
       ),
     );
   }

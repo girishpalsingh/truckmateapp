@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 // Parse arguments
 const args = process.argv.slice(2);
@@ -147,6 +147,22 @@ async function main() {
 
         const rateConId = processData.rate_con_id;
         if (!rateConId) throw new Error("No rate_con_id returned from processor.");
+
+        // Verify Rate Con Visibility
+        console.log(`\n-> Verifying Rate Con Visibility (ID: ${rateConId})...`);
+        const { data: checkRc, error: checkRcError } = await authClient
+            .from('rate_confirmations')
+            .select('id, organization_id')
+            .eq('id', rateConId)
+            .single();
+
+        if (checkRcError || !checkRc) {
+            console.error("❌ Rate Con NOT visible to user:", checkRcError);
+            // We can proceed to see if FK fails, or stop here.
+            // Let's stop to make it clear.
+            throw new Error(`Rate Con ${rateConId} is not visible to user. RLS Issue?`);
+        }
+        console.log(`✅ Rate Con Visible. Org: ${checkRc.organization_id}`);
 
         // 6. Create Load & Trip
         console.log("\n-> Creating Load & Trip...");

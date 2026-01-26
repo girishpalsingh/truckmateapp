@@ -1,5 +1,5 @@
 // Specific prompts for extracting data from different document types
-import rate_con from "./prompts/rate_con.ts";
+import { RATE_CON_PROMPT as rate_con } from "./prompts/rate_con.ts";
 import bol from "./prompts/bol.ts";
 import fuel_receipt from "./prompts/fuel_receipt.ts";
 import lumper_receipt from "./prompts/lumper_receipt.ts";

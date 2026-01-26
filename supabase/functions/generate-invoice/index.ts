@@ -29,7 +29,7 @@ serve(async (req) => withLogging(req, async (req) => {
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         // Verify User and Role
-        await authorizeRole(req, supabase, ['admin', 'owner', 'dispatcher', 'driver']);
+        const { userId, organizationId, role } = await authorizeRole(req, supabase, ['admin', 'owner', 'dispatcher', 'driver']);
 
         const body: InvoiceRequest = await req.json();
         const { trip_id, send_for_approval = true } = body;

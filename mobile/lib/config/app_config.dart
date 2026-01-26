@@ -10,6 +10,7 @@ class AppConfig {
   final ResendConfig resend;
   final DevelopmentConfig development;
   final StorageConfig storage;
+  final LocationTrackingConfig locationTracking;
 
   AppConfig({
     required this.supabase,
@@ -19,6 +20,7 @@ class AppConfig {
     required this.resend,
     required this.development,
     required this.storage,
+    required this.locationTracking,
   });
 
   static AppConfig? _instance;
@@ -49,6 +51,8 @@ class AppConfig {
       resend: ResendConfig.fromJson(json['resend'] ?? {}),
       development: DevelopmentConfig.fromJson(json['development'] ?? {}),
       storage: StorageConfig.fromJson(json['storage'] ?? {}),
+      locationTracking:
+          LocationTrackingConfig.fromJson(json['location_tracking'] ?? {}),
     );
   }
 
@@ -71,6 +75,8 @@ class AppConfig {
         devOrganizationId: '11111111-1111-1111-1111-111111111111',
       ),
       storage: StorageConfig(bucketPrefix: 'truckmate', maxFileSizeMb: 50),
+      locationTracking: LocationTrackingConfig(
+          enabled: true, intervalSeconds: 60, distanceFilterMeters: 10),
     );
   }
 
@@ -205,6 +211,26 @@ class StorageConfig {
     return StorageConfig(
       bucketPrefix: json['bucket_prefix'] ?? 'truckmate',
       maxFileSizeMb: json['max_file_size_mb'] ?? 50,
+    );
+  }
+}
+
+class LocationTrackingConfig {
+  final bool enabled;
+  final int intervalSeconds;
+  final int distanceFilterMeters;
+
+  LocationTrackingConfig({
+    required this.enabled,
+    required this.intervalSeconds,
+    required this.distanceFilterMeters,
+  });
+
+  factory LocationTrackingConfig.fromJson(Map<String, dynamic> json) {
+    return LocationTrackingConfig(
+      enabled: json['enabled'] ?? true,
+      intervalSeconds: json['interval_seconds'] ?? 60,
+      distanceFilterMeters: json['distance_filter_meters'] ?? 10,
     );
   }
 }

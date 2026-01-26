@@ -25,7 +25,7 @@ class ClauseNotification {
   final DateTime? deadlineIso;
   final int? relativeMinutesOffset;
   final String? originalClauseExcerpt;
-  final DateTime createdAt;
+  final DateTime? createdAt;
 
   ClauseNotification({
     required this.id,
@@ -37,13 +37,13 @@ class ClauseNotification {
     this.deadlineIso,
     this.relativeMinutesOffset,
     this.originalClauseExcerpt,
-    required this.createdAt,
+    this.createdAt,
   });
 
   factory ClauseNotification.fromJson(Map<String, dynamic> json) {
     return ClauseNotification(
-      id: json['id'],
-      riskClauseId: json['risk_clause_id'],
+      id: json['notif_id']?.toString() ?? '',
+      riskClauseId: json['clause_id']?.toString() ?? '',
       title: json['title'],
       description: json['description'],
       triggerType: _parseTriggerType(json['trigger_type']),
@@ -53,7 +53,9 @@ class ClauseNotification {
           : null,
       relativeMinutesOffset: json['relative_minutes_offset'],
       originalClauseExcerpt: json['original_clause_excerpt'],
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : null,
     );
   }
 
@@ -104,7 +106,7 @@ class ClauseNotification {
       'deadline_iso': deadlineIso?.toIso8601String(),
       'relative_minutes_offset': relativeMinutesOffset,
       'original_clause_excerpt': originalClauseExcerpt,
-      'created_at': createdAt.toIso8601String(),
+      'created_at': createdAt?.toIso8601String(),
     };
   }
 

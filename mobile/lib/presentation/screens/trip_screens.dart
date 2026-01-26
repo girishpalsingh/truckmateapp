@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/trip_service.dart';
 import '../../services/truck_service.dart';
 import '../../services/profile_service.dart';
+import '../../services/tracking_service.dart';
 import '../../data/models/truck.dart';
 import '../../data/models/user_profile.dart';
 import '../../data/models/trip.dart';
@@ -132,7 +133,7 @@ class _NewTripScreenState extends ConsumerState<NewTripScreen> {
         return;
       }
 
-      await _tripService.createTrip(
+      final trip = await _tripService.createTrip(
         organizationId: organizationId,
         loadId: widget.loadId,
         truckId: _selectedTruck?.id,
@@ -141,6 +142,9 @@ class _NewTripScreenState extends ConsumerState<NewTripScreen> {
         destinationAddress: _destinationController.text,
         odometerStart: int.parse(_odometerController.text),
       );
+
+      // Start tracking
+      ref.read(trackingServiceProvider).startTracking(trip.id);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -366,6 +370,64 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     }
   }
 
+  Future<void> _endTrip() async {
+    final odometerController = TextEditingController();
+    final shouldEnd = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('End Trip'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Enter ending odometer reading:'),
+            TextField(
+              controller: odometerController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Odometer'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: AppTheme.successButtonStyle,
+            child: const Text('End Trip'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldEnd == true && odometerController.text.isNotEmpty) {
+      setState(() => _isLoading = true);
+      try {
+        await TripService()
+            .endTrip(_trip!.id, int.tryParse(odometerController.text) ?? 0);
+
+        // Stop tracking
+        await ref.read(trackingServiceProvider).stopTracking();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Trip ended successfully')),
+          );
+          Navigator.pushReplacementNamed(context, '/dashboard');
+        }
+      } catch (e) {
+        debugPrint('Error ending trip: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          );
+          setState(() => _isLoading = false);
+        }
+      }
+    }
+  }
+
   Future<void> _createDispatcherSheet() async {
     if (_trip?.loadId == null) return;
 
@@ -450,6 +512,19 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
                   onPressed: _createDispatcherSheet,
                   icon: const Icon(Icons.description),
                   label: const Text('Create Dispatcher Sheet'),
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _endTrip,
+                  icon: const Icon(Icons.stop_circle),
+                  label: const Text('End Trip'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
                 ),
               ),
             ],

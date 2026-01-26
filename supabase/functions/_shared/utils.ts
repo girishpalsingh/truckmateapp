@@ -1,4 +1,4 @@
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { SupabaseClient } from "@supabase/supabase-js";
 import { authorizeUser } from "./auth.ts";
 
 export const getUserByPhone = async (supabase: SupabaseClient, phone: string) => {
@@ -121,7 +121,12 @@ export const verifyRole = async (supabase: SupabaseClient, userId: string, allow
         throw new Error(`Forbidden: Role '${profile.role}' is not authorized for this action`);
     }
 
-    return profile;
+    return {
+        userId: profile.id,
+        organizationId: profile.organization_id,
+        role: profile.role,
+        profile // Keep profile in case other fields are needed, but encourage using the destructured ones
+    };
 };
 
 /**

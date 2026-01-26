@@ -22,7 +22,9 @@ const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 import { EXTRACTION_PROMPTS as prompts } from "./prompts.ts";
 import { processRateCon } from "./rate-con-processor.ts";
+import { processBillOfLading } from "./bol-processor.ts";
 import mockResponse from "../mock_llm_response/response.json" with { type: "json" };
+import mockBolResponse from "../mock_llm_response/response_bol.json" with { type: "json" };
 
 // Process image with Gemini
 function loadPrompt(documentType: string): string {
@@ -40,10 +42,12 @@ export async function processWithGemini(imageUrl: string, documentType: string, 
         console.log("MOCK LLM MODE ENABLED: Returning mock response in 2 seconds...");
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        console.log("Returning mock data:", JSON.stringify(mockResponse, null, 2));
+        const responseData = (documentType === 'bol' || documentType === 'bill_of_lading') ? mockBolResponse : mockResponse;
+
+        console.log("Returning mock data:", JSON.stringify(responseData, null, 2));
         return {
-            extractedData: mockResponse,
-            rawText: JSON.stringify(mockResponse),
+            extractedData: responseData,
+            rawText: JSON.stringify(responseData),
             confidence: 0.95
         };
     }
@@ -70,7 +74,12 @@ export async function processWithGemini(imageUrl: string, documentType: string, 
 
     let imageResponse;
     try {
-        imageResponse = await fetch(cleanImageUrl)
+        imageResponse = await fetch(cleanImageUrl, {
+            headers: {
+                "User-Agent": "TruckMate/1.0",
+                "Accept": "*/*"
+            }
+        })
     } catch (e) {
         console.error(`Failed to fetch image from ${cleanImageUrl}:`, e)
         throw new Error(`Failed to download image: ${(e as any).message}`)
@@ -101,7 +110,7 @@ export async function processWithGemini(imageUrl: string, documentType: string, 
             temperature: 1.0,
             maxOutputTokens: 25000,
             responseMimeType: "application/json",
-            thinkingConfig: { includeThoughts: false, thinkingLevel: "minimal" }
+            thinkingConfig: { includeThoughts: false, thinkingLevel: "minimal" } as any
         }
     });
 
@@ -184,7 +193,7 @@ export async function processDocumentWithAI(
     // 1. Fetch document metadata (including uploaded_by)
     const { data: docData, error: docError } = await supabase
         .from('documents')
-        .select('uploaded_by, organization_id')
+        .select('uploaded_by, organization_id, load_id')
         .eq('id', documentId)
         .single();
 
@@ -194,6 +203,7 @@ export async function processDocumentWithAI(
 
     const userId = docData?.uploaded_by || null;
     const effectiveOrgId = organizationId || docData?.organization_id;
+    const loadId = docData?.load_id || null;
 
     // Get organization's LLM preference
     let llmModel = GEMINI_MODEL
@@ -295,12 +305,24 @@ export async function processDocumentWithAI(
             const dbRateCon = await processRateCon(documentId, extractedData, effectiveOrgId, userId);
             if (dbRateCon) {
                 rateConId = dbRateCon.id;
-                // Inject the DB UUID into extractedData so clients can easily find it?
-                // Or just return it in the wrapping object.
+                // Inject the DB UUID into extractedData so clients can easily find it
                 (extractedData as any).rate_con_db_id = rateConId;
+
+                // Update load_id in extractedData to match what was inserted in DB (with timestamp)
+                if ((dbRateCon as any).load_id) {
+                    (extractedData as any).load_id = (dbRateCon as any).load_id;
+                }
             }
         } catch (e) {
             console.error("Error in processRateCon:", e);
+        }
+    }
+
+    if (documentType === 'bol' && effectiveOrgId) {
+        try {
+            await processBillOfLading(documentId, extractedData, effectiveOrgId, loadId);
+        } catch (e) {
+            console.error("Error in processBillOfLading:", e);
         }
     }
 

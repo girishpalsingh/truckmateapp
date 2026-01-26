@@ -20,6 +20,8 @@ import 'presentation/screens/document_scanner_screen.dart';
 import 'presentation/screens/expense_screen.dart';
 import 'presentation/screens/pending_documents_screen.dart';
 import 'services/push_notification_service.dart';
+import 'services/device_service.dart';
+import 'services/tracking_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart'; // Uncomment after running 'flutterfire configure'
 
@@ -66,6 +68,24 @@ void main() async {
           'Firebase initialization failed (expected if config missing)', e);
     }
     // print('ℹ️ Firebase skipped (Run `flutterfire configure` to enable)');
+
+    // Initialize Device and Tracking services monitoring
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
+      final event = data.event;
+      if (event == AuthChangeEvent.signedIn ||
+          event == AuthChangeEvent.initialSession) {
+        try {
+          final deviceService = DeviceService(Supabase.instance.client);
+          await deviceService.registerDevice();
+
+          final trackingService =
+              TrackingService(Supabase.instance.client, deviceService);
+          await trackingService.restoreTracking();
+        } catch (e) {
+          AppLogger.e('Error initializing tracking services', e);
+        }
+      }
+    });
 
     // Initialize PowerSync for offline support
     // await PowerSyncService.initialize();

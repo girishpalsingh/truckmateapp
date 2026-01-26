@@ -1,26 +1,43 @@
+import 'commodity.dart';
+
 /// Enum for stop types
 enum StopType { pickup, delivery }
 
 /// Model for pickup and delivery stops
 class Stop {
-  final String id;
-  final String rateConfirmationId;
+  final String
+      id; // This might be stop_id (int) or serial converted to string? Model usually expects string ID.
+  // In new schema stop_id is SERIAL (int). Flutter usually handles string IDs cleanly, but if we get int from JSON, we should .toString()
+  final int? stopId; // Mapping stop_id
+  final String? rateConfirmationId; // UUID
+  final int? rcId; // Serial
+
   final int sequenceNumber;
   final StopType stopType;
-  final String? address;
-  final String? contactPerson;
-  final String? phone;
-  final String? email;
+
+  final String? address; // facility_address
+  final String? contactPerson; // contact_name
+  final String? phone; // contact_phone
+  final String? email; // contact_email
+
   final DateTime? scheduledArrival;
   final DateTime? scheduledDeparture;
-  final String? dateRaw;
-  final String? timeRaw;
+  final String? dateRaw; // raw_date_text
+
   final String? specialInstructions;
-  final DateTime createdAt;
+  final List<Commodity> commodities;
+
+  // Computed helpers for display
+  String get timeRaw {
+    // raw_date_text might contain time.
+    return dateRaw ?? '';
+  }
 
   Stop({
     required this.id,
-    required this.rateConfirmationId,
+    this.stopId,
+    this.rateConfirmationId,
+    this.rcId,
     required this.sequenceNumber,
     required this.stopType,
     this.address,
@@ -30,60 +47,62 @@ class Stop {
     this.scheduledArrival,
     this.scheduledDeparture,
     this.dateRaw,
-    this.timeRaw,
     this.specialInstructions,
-    required this.createdAt,
+    this.commodities = const [],
   });
 
   factory Stop.fromJson(Map<String, dynamic> json) {
     return Stop(
-      id: json['id'],
+      id: json['stop_id']?.toString() ?? '',
+      stopId: json['stop_id'],
       rateConfirmationId: json['rate_confirmation_id'],
-      sequenceNumber: json['sequence_number'] ?? 0,
+      rcId: json['rc_id'],
+      sequenceNumber: json['stop_sequence'] ?? 0,
       stopType:
           json['stop_type'] == 'Pickup' ? StopType.pickup : StopType.delivery,
-      address: json['address'],
-      contactPerson: json['contact_person'],
-      phone: json['phone'],
-      email: json['email'],
+      address: json['facility_address'],
+      contactPerson: json['contact_name'],
+      phone: json['contact_phone'],
+      email: json['contact_email'],
       scheduledArrival: json['scheduled_arrival'] != null
           ? DateTime.tryParse(json['scheduled_arrival'])
           : null,
       scheduledDeparture: json['scheduled_departure'] != null
           ? DateTime.tryParse(json['scheduled_departure'])
           : null,
-      dateRaw: json['date_raw'],
-      timeRaw: json['time_raw'],
+      dateRaw: json['raw_date_text'],
       specialInstructions: json['special_instructions'],
-      createdAt: DateTime.parse(json['created_at']),
+      commodities: json['rc_commodities'] != null
+          ? (json['rc_commodities'] as List)
+              .map((e) => Commodity.fromJson(e))
+              .toList()
+          : [],
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
+      'stop_id': stopId,
       'rate_confirmation_id': rateConfirmationId,
-      'sequence_number': sequenceNumber,
+      'rc_id': rcId,
+      'stop_sequence': sequenceNumber,
       'stop_type': stopType == StopType.pickup ? 'Pickup' : 'Delivery',
-      'address': address,
-      'contact_person': contactPerson,
-      'phone': phone,
-      'email': email,
+      'facility_address': address,
+      'contact_name': contactPerson,
+      'contact_phone': phone,
+      'contact_email': email,
       'scheduled_arrival': scheduledArrival?.toIso8601String(),
       'scheduled_departure': scheduledDeparture?.toIso8601String(),
-      'date_raw': dateRaw,
-      'time_raw': timeRaw,
+      'raw_date_text': dateRaw,
       'special_instructions': specialInstructions,
-      'created_at': createdAt.toIso8601String(),
+      'rc_commodities': commodities.map((e) => e.toJson()).toList(),
     };
   }
 
   String get displayType => stopType == StopType.pickup ? 'Pickup' : 'Delivery';
 
   String get displaySchedule {
-    if (dateRaw != null && timeRaw != null) {
-      return '$dateRaw at $timeRaw';
-    } else if (dateRaw != null) {
+    if (dateRaw != null && dateRaw!.isNotEmpty) {
       return dateRaw!;
     } else if (scheduledArrival != null) {
       return scheduledArrival!.toLocal().toString();

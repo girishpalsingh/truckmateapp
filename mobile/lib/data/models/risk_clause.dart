@@ -5,49 +5,71 @@ enum TrafficLight { red, yellow, green }
 
 /// Model for risk clauses identified in rate confirmations
 class RiskClause {
-  final String id;
-  final String rateConfirmationId;
+  final String id; // This might be clause_id (serial)
+  final int? clauseId;
+  final String? rateConfirmationId; // UUID
+  final int? rcId; // Serial
+
   final String? clauseType;
   final TrafficLight trafficLight;
-  final String? clauseTitle;
-  final String? clauseTitlePunjabi;
-  final String? dangerSimpleLanguage;
-  final String? dangerSimplePunjabi;
+
+  final String? titleEn;
+  final String? titlePunjabi;
+
+  final String? explanationEn;
+  final String? explanationPunjabi;
+
   final String? originalText;
   final ClauseNotification? notification;
-  final DateTime createdAt;
+  final DateTime? createdAt; // Might not be returned by default query
 
   RiskClause({
     required this.id,
-    required this.rateConfirmationId,
+    this.clauseId,
+    this.rateConfirmationId,
+    this.rcId,
     this.clauseType,
     required this.trafficLight,
-    this.clauseTitle,
-    this.clauseTitlePunjabi,
-    this.dangerSimpleLanguage,
-    this.dangerSimplePunjabi,
+    this.titleEn,
+    this.titlePunjabi,
+    this.explanationEn,
+    this.explanationPunjabi,
     this.originalText,
     this.notification,
-    required this.createdAt,
+    this.createdAt,
   });
 
   factory RiskClause.fromJson(Map<String, dynamic> json) {
     return RiskClause(
-      id: json['id'],
+      id: json['clause_id']?.toString() ?? '',
+      clauseId: json['clause_id'],
       rateConfirmationId: json['rate_confirmation_id'],
+      rcId: json['rc_id'],
+
       clauseType: json['clause_type'],
       trafficLight: _parseTrafficLight(json['traffic_light']),
-      clauseTitle: json['clause_title'],
-      clauseTitlePunjabi: json['clause_title_punjabi'],
-      dangerSimpleLanguage: json['danger_simple_language'],
-      dangerSimplePunjabi: json['danger_simple_punjabi'],
+
+      titleEn: json['title_en'],
+      titlePunjabi: json['title_punjabi'],
+
+      explanationEn: json['explanation_en'],
+      explanationPunjabi: json['explanation_punjabi'],
+
       originalText: json['original_text'],
-      notification: json['clause_notifications'] != null &&
-              (json['clause_notifications'] as List).isNotEmpty
-          ? ClauseNotification.fromJson(
-              (json['clause_notifications'] as List).first)
+
+      // Handle both cases: joined rc_notifications (single or array)
+      notification: json['rc_notifications'] != null
+          ? (json['rc_notifications'] is List
+              ? (json['rc_notifications'] as List).isNotEmpty
+                  ? ClauseNotification.fromJson(
+                      (json['rc_notifications'] as List).first)
+                  : null
+              : ClauseNotification.fromJson(json['rc_notifications']))
           : null,
-      createdAt: DateTime.parse(json['created_at']),
+
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'])
+          : null,
     );
   }
 
@@ -65,16 +87,17 @@ class RiskClause {
 
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
+      'clause_id': clauseId,
       'rate_confirmation_id': rateConfirmationId,
+      'rc_id': rcId,
       'clause_type': clauseType,
       'traffic_light': trafficLight.name.toUpperCase(),
-      'clause_title': clauseTitle,
-      'clause_title_punjabi': clauseTitlePunjabi,
-      'danger_simple_language': dangerSimpleLanguage,
-      'danger_simple_punjabi': dangerSimplePunjabi,
+      'title_en': titleEn,
+      'title_punjabi': titlePunjabi,
+      'explanation_en': explanationEn,
+      'explanation_punjabi': explanationPunjabi,
       'original_text': originalText,
-      'created_at': createdAt.toIso8601String(),
+      'created_at': createdAt?.toIso8601String(),
     };
   }
 

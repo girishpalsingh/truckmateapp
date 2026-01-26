@@ -126,8 +126,7 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
       );
     }
 
-    final trafficLight =
-        _rateCon?.overallTrafficLight ?? RateConTrafficLight.unknown;
+    final trafficLight = _rateCon?.riskScore ?? RateConTrafficLight.unknown;
     final brokerName = _rateCon?.brokerName;
     final color = _getStatusColor(trafficLight);
 

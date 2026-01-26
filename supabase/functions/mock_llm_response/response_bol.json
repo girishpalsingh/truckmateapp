@@ -1,0 +1,83 @@
+{
+    "document_type": "BILL_OF_LADING",
+    "bol_number": "BOL-123456789",
+    "pickup_date": "2026-02-15",
+    "dates": {
+        "ship_date": "2026-02-15",
+        "delivery_date": "2026-02-18"
+    },
+    "parties": {
+        "shipper": {
+            "name": "Acme Manufacturing",
+            "address_raw": "123 Industrial Pkwy, Springfield, IL 62704",
+            "city": "Springfield",
+            "state": "IL",
+            "zip": "62704"
+        },
+        "consignee": {
+            "name": "Global Distribution Center",
+            "address_raw": "456 Logistics Blvd, Dallas, TX 75001",
+            "city": "Dallas",
+            "state": "TX",
+            "zip": "75001"
+        },
+        "bill_to": {
+            "name": "Third Party Billing Services",
+            "address_raw": "PO Box 999, Chicago, IL 60601"
+        },
+        "carrier": {
+            "name": "TruckMate Express",
+            "scac": "TMEX"
+        }
+    },
+    "references": {
+        "po_numbers": [
+            "PO-998877",
+            "PO-112233"
+        ],
+        "pro_number": "TM-PRO-555",
+        "seal_numbers": [
+            "SL-001",
+            "SL-002"
+        ],
+        "customer_reference_numbers": [
+            "CR-100"
+        ]
+    },
+    "freight_summary": {
+        "total_handling_units": 20,
+        "handling_unit_type": "Pallets",
+        "total_weight_lbs": 35000.00,
+        "is_hazmat_detected": false,
+        "declared_value": 150000.00
+    },
+    "freight_line_items": [
+        {
+            "qty": 10,
+            "unit_type": "Pallets",
+            "weight_lbs": 17500.00,
+            "description": "Widget Components Type A",
+            "nmfc_code": "12345",
+            "freight_class": "60",
+            "is_hazmat": false
+        },
+        {
+            "qty": 10,
+            "unit_type": "Pallets",
+            "weight_lbs": 17500.00,
+            "description": "Widget Components Type B",
+            "nmfc_code": "12346",
+            "freight_class": "60",
+            "is_hazmat": false
+        }
+    ],
+    "billing_terms": {
+        "payment_method": "THIRD_PARTY"
+    },
+    "signatures": {
+        "shipper_signed": true,
+        "carrier_signed": true,
+        "receiver_signed": false,
+        "notes": "Driver count"
+    }
+}

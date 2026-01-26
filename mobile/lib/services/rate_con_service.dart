@@ -15,12 +15,15 @@ class RateConService {
     try {
       final response = await _client.from('rate_confirmations').select('''
           *,
-          reference_numbers(*),
-          stops(*),
-          charges(*),
-          risk_clauses(
+          rc_references:rc_references!rc_references_rate_confirmation_id_fkey(*),
+          rc_stops:rc_stops!rc_stops_rate_confirmation_id_fkey(
             *,
-            clause_notifications(*)
+            rc_commodities(*)
+          ),
+          rc_charges:rc_charges!rc_charges_rate_confirmation_id_fkey(*),
+          rc_risk_clauses:rc_risk_clauses!rc_risk_clauses_rate_confirmation_id_fkey(
+            *,
+            rc_notifications(*)
           )
         ''').eq('id', id).maybeSingle();
 
@@ -40,12 +43,15 @@ class RateConService {
     try {
       final response = await _client.from('rate_confirmations').select('''
           *,
-          reference_numbers(*),
-          stops(*),
-          charges(*),
-          risk_clauses(
+          rc_references:rc_references!rc_references_rate_confirmation_id_fkey(*),
+          rc_stops:rc_stops!rc_stops_rate_confirmation_id_fkey(
             *,
-            clause_notifications(*)
+            rc_commodities(*)
+          ),
+          rc_charges:rc_charges!rc_charges_rate_confirmation_id_fkey(*),
+          rc_risk_clauses:rc_risk_clauses!rc_risk_clauses_rate_confirmation_id_fkey(
+            *,
+            rc_notifications(*)
           )
         ''').eq('document_id', documentId).maybeSingle();
 
@@ -130,9 +136,9 @@ class RateConService {
 
   /// Get risk clauses for a rate confirmation
   Future<List<RiskClause>> getRiskClauses(String rateConfirmationId) async {
-    final response = await _client.from('risk_clauses').select('''
+    final response = await _client.from('rc_risk_clauses').select('''
           *,
-          clause_notifications(*)
+          rc_notifications(*)
         ''').eq('rate_confirmation_id', rateConfirmationId).order('created_at');
 
     return (response as List).map((e) => RiskClause.fromJson(e)).toList();

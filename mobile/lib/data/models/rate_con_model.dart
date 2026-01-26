@@ -8,8 +8,9 @@ enum RateConTrafficLight { red, yellow, green, unknown }
 
 /// Rate Confirmation model matching new normalized schema
 class RateCon {
-  final String id;
-  final String rateConId;
+  final String id; // UUID
+  final int? rcId; // Serial
+  final String? loadId; // Commercial ID
   final String? documentId;
   final String organizationId;
 
@@ -23,25 +24,29 @@ class RateCon {
   // Carrier Details
   final String? carrierName;
   final String? carrierDotNumber;
-  final String? carrierAddress;
+  final String? carrierAddress; // Not in new schema? check migration.
+  // Migration has carrier_name, carrier_dot, carrier_equipment_type, carrier_equipment_number.
+  // Address/Phone/Email for carrier might be missing in new schema?
+  // Checking migration...
+  // carrier_name, carrier_dot, carrier_equipment_type, carrier_equipment_number.
+  // No address/phone/email. I will keep them nullable in model but they won't be populated.
+
   final String? carrierPhone;
   final String? carrierEmail;
   final String? carrierEquipmentType;
   final String? carrierEquipmentNumber;
 
   // Financials
-  final double? totalRateAmount;
+  final double? totalRate; // total_rate
   final String currency;
   final String? paymentTerms;
 
-  // Commodity
-  final String? commodityName;
-  final double? commodityWeight;
-  final String? commodityUnit;
-  final int? palletCount;
+  // Commodity (Gone? Now in stops. Keeping simplified getters if needed or removing)
+  // New schema has rc_commodities linked to stops.
+  // I will remove logic that assumes single commodity on RC.
 
   // Risk
-  final RateConTrafficLight overallTrafficLight;
+  final RateConTrafficLight riskScore; // risk_score
   final String status;
 
   // Timestamps
@@ -56,7 +61,8 @@ class RateCon {
 
   RateCon({
     required this.id,
-    required this.rateConId,
+    this.rcId,
+    this.loadId,
     this.documentId,
     required this.organizationId,
     this.brokerName,
@@ -71,14 +77,10 @@ class RateCon {
     this.carrierEmail,
     this.carrierEquipmentType,
     this.carrierEquipmentNumber,
-    this.totalRateAmount,
+    this.totalRate,
     this.currency = 'USD',
     this.paymentTerms,
-    this.commodityName,
-    this.commodityWeight,
-    this.commodityUnit,
-    this.palletCount,
-    this.overallTrafficLight = RateConTrafficLight.unknown,
+    this.riskScore = RateConTrafficLight.unknown,
     required this.status,
     required this.createdAt,
     required this.updatedAt,
@@ -89,69 +91,85 @@ class RateCon {
   });
 
   factory RateCon.fromJson(Map<String, dynamic> json) {
-    return RateCon(
-      id: json['id'],
-      rateConId: json['rate_con_id'] ?? '',
-      documentId: json['document_id'],
-      organizationId: json['organization_id'],
+    try {
+      return RateCon(
+        id: json['id'],
+        rcId: json['rc_id'],
+        loadId: json['load_id'],
+        documentId: json['document_id'],
+        organizationId: json['organization_id'],
 
-      // Broker
-      brokerName: json['broker_name'],
-      brokerMcNumber: json['broker_mc_number'],
-      brokerAddress: json['broker_address'],
-      brokerPhone: json['broker_phone'],
-      brokerEmail: json['broker_email'],
+        // Broker
+        brokerName: json['broker_name'],
+        brokerMcNumber: json['broker_mc'],
+        brokerAddress: json['broker_address'],
+        brokerPhone: json['broker_phone'],
+        brokerEmail: json['broker_email'],
 
-      // Carrier
-      carrierName: json['carrier_name'],
-      carrierDotNumber: json['carrier_dot_number'],
-      carrierAddress: json['carrier_address'],
-      carrierPhone: json['carrier_phone'],
-      carrierEmail: json['carrier_email'],
-      carrierEquipmentType: json['carrier_equipment_type'],
-      carrierEquipmentNumber: json['carrier_equipment_number'],
+        // Carrier
+        carrierName: json['carrier_name'],
+        carrierDotNumber: json['carrier_dot'],
+        carrierEquipmentType: json['carrier_equipment_type'],
+        carrierEquipmentNumber: json['carrier_equipment_number'],
 
-      // Financials
-      totalRateAmount: json['total_rate_amount'] != null
-          ? (json['total_rate_amount'] as num).toDouble()
-          : null,
-      currency: json['currency'] ?? 'USD',
-      paymentTerms: json['payment_terms'],
+        // Financials
+        totalRate: json['total_rate'] != null
+            ? (json['total_rate'] as num).toDouble()
+            : null,
+        currency: json['currency'] ?? 'USD',
+        paymentTerms: json['payment_terms'],
 
-      // Commodity
-      commodityName: json['commodity_name'],
-      commodityWeight: json['commodity_weight'] != null
-          ? (json['commodity_weight'] as num).toDouble()
-          : null,
-      commodityUnit: json['commodity_unit'],
-      palletCount: json['pallet_count'],
+        // Risk
+        riskScore: _parseTrafficLight(json['risk_score']),
+        status: json['status'] ?? 'under_review',
 
-      // Risk
-      overallTrafficLight: _parseTrafficLight(json['overall_traffic_light']),
-      status: json['status'] ?? 'under_review',
+        // Timestamps
+        createdAt: DateTime.parse(json['created_at']),
+        updatedAt: DateTime.parse(json['updated_at']),
 
-      // Timestamps
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
-
-      // Related data (populated if included in query)
-      referenceNumbers: json['reference_numbers'] != null
-          ? (json['reference_numbers'] as List)
-              .map((e) => ReferenceNumber.fromJson(e))
-              .toList()
-          : [],
-      stops: json['stops'] != null
-          ? (json['stops'] as List).map((e) => Stop.fromJson(e)).toList()
-          : [],
-      charges: json['charges'] != null
-          ? (json['charges'] as List).map((e) => Charge.fromJson(e)).toList()
-          : [],
-      riskClauses: json['risk_clauses'] != null
-          ? (json['risk_clauses'] as List)
-              .map((e) => RiskClause.fromJson(e))
-              .toList()
-          : [],
-    );
+        // Related data
+        referenceNumbers: json['rc_references'] != null
+            ? (json['rc_references'] as List).map((e) {
+                try {
+                  return ReferenceNumber.fromJson(e);
+                } catch (err) {
+                  throw Exception('Error parsing ReferenceNumber: $err IN $e');
+                }
+              }).toList()
+            : [],
+        stops: json['rc_stops'] != null
+            ? (json['rc_stops'] as List).map((e) {
+                try {
+                  return Stop.fromJson(e);
+                } catch (err) {
+                  throw Exception('Error parsing Stop: $err IN $e');
+                }
+              }).toList()
+            : [],
+        charges: json['rc_charges'] != null
+            ? (json['rc_charges'] as List).map((e) {
+                try {
+                  return Charge.fromJson(e);
+                } catch (err) {
+                  throw Exception('Error parsing Charge: $err IN $e');
+                }
+              }).toList()
+            : [],
+        riskClauses: json['rc_risk_clauses'] != null
+            ? (json['rc_risk_clauses'] as List).map((e) {
+                try {
+                  return RiskClause.fromJson(e);
+                } catch (err) {
+                  // Catch nested Notification errors too
+                  throw Exception('Error parsing RiskClause: $err IN $e');
+                }
+              }).toList()
+            : [],
+      );
+    } catch (e) {
+      // Catch top-level errors (like id being null)
+      throw Exception('Error parsing RateCon: $e. JSON: $json');
+    }
   }
 
   static RateConTrafficLight _parseTrafficLight(String? value) {
@@ -170,29 +188,23 @@ class RateCon {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'rate_con_id': rateConId,
+      'rc_id': rcId,
+      'load_id': loadId,
       'document_id': documentId,
       'organization_id': organizationId,
       'broker_name': brokerName,
-      'broker_mc_number': brokerMcNumber,
+      'broker_mc': brokerMcNumber,
       'broker_address': brokerAddress,
       'broker_phone': brokerPhone,
       'broker_email': brokerEmail,
       'carrier_name': carrierName,
-      'carrier_dot_number': carrierDotNumber,
-      'carrier_address': carrierAddress,
-      'carrier_phone': carrierPhone,
-      'carrier_email': carrierEmail,
+      'carrier_dot': carrierDotNumber,
       'carrier_equipment_type': carrierEquipmentType,
       'carrier_equipment_number': carrierEquipmentNumber,
-      'total_rate_amount': totalRateAmount,
+      'total_rate': totalRate,
       'currency': currency,
       'payment_terms': paymentTerms,
-      'commodity_name': commodityName,
-      'commodity_weight': commodityWeight,
-      'commodity_unit': commodityUnit,
-      'pallet_count': palletCount,
-      'overall_traffic_light': overallTrafficLight.name.toUpperCase(),
+      'risk_score': riskScore.name.toUpperCase(),
       'status': status,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
@@ -201,7 +213,8 @@ class RateCon {
 
   RateCon copyWith({
     String? id,
-    String? rateConId,
+    int? rcId,
+    String? loadId,
     String? documentId,
     String? organizationId,
     String? brokerName,
@@ -211,19 +224,12 @@ class RateCon {
     String? brokerEmail,
     String? carrierName,
     String? carrierDotNumber,
-    String? carrierAddress,
-    String? carrierPhone,
-    String? carrierEmail,
     String? carrierEquipmentType,
     String? carrierEquipmentNumber,
-    double? totalRateAmount,
+    double? totalRate,
     String? currency,
     String? paymentTerms,
-    String? commodityName,
-    double? commodityWeight,
-    String? commodityUnit,
-    int? palletCount,
-    RateConTrafficLight? overallTrafficLight,
+    RateConTrafficLight? riskScore,
     String? status,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -234,7 +240,8 @@ class RateCon {
   }) {
     return RateCon(
       id: id ?? this.id,
-      rateConId: rateConId ?? this.rateConId,
+      rcId: rcId ?? this.rcId,
+      loadId: loadId ?? this.loadId,
       documentId: documentId ?? this.documentId,
       organizationId: organizationId ?? this.organizationId,
       brokerName: brokerName ?? this.brokerName,
@@ -244,20 +251,13 @@ class RateCon {
       brokerEmail: brokerEmail ?? this.brokerEmail,
       carrierName: carrierName ?? this.carrierName,
       carrierDotNumber: carrierDotNumber ?? this.carrierDotNumber,
-      carrierAddress: carrierAddress ?? this.carrierAddress,
-      carrierPhone: carrierPhone ?? this.carrierPhone,
-      carrierEmail: carrierEmail ?? this.carrierEmail,
       carrierEquipmentType: carrierEquipmentType ?? this.carrierEquipmentType,
       carrierEquipmentNumber:
           carrierEquipmentNumber ?? this.carrierEquipmentNumber,
-      totalRateAmount: totalRateAmount ?? this.totalRateAmount,
+      totalRate: totalRate ?? this.totalRate,
       currency: currency ?? this.currency,
       paymentTerms: paymentTerms ?? this.paymentTerms,
-      commodityName: commodityName ?? this.commodityName,
-      commodityWeight: commodityWeight ?? this.commodityWeight,
-      commodityUnit: commodityUnit ?? this.commodityUnit,
-      palletCount: palletCount ?? this.palletCount,
-      overallTrafficLight: overallTrafficLight ?? this.overallTrafficLight,
+      riskScore: riskScore ?? this.riskScore,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -269,7 +269,7 @@ class RateCon {
   }
 
   String get trafficLightEmoji {
-    switch (overallTrafficLight) {
+    switch (riskScore) {
       case RateConTrafficLight.red:
         return '🔴';
       case RateConTrafficLight.yellow:
@@ -281,9 +281,8 @@ class RateCon {
     }
   }
 
-  String get displayTotalRate => totalRateAmount != null
-      ? '\$${totalRateAmount!.toStringAsFixed(2)}'
-      : 'N/A';
+  String get displayTotalRate =>
+      totalRate != null ? '\$${totalRate!.toStringAsFixed(2)}' : 'N/A';
 
   /// Suggests an origin address based on the first pickup stop
   String? get originAddress {

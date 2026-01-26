@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Journey Visualization</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 10px;
+            z-index: 1000;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+            font-family: sans-serif;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="info">Loading journey...</div>
+    <div id="map"></div>
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const SUPABASE_URL = params.get('url');
+        const ANON_KEY = params.get('key');
+        const TRIP_ID = params.get('trip_id');
+
+        if (!SUPABASE_URL || !ANON_KEY || !TRIP_ID) {
+            document.getElementById('info').innerHTML = "Missing parameters (url, key, trip_id)";
+        } else {
+            initMap();
+        }
+
+        async function initMap() {
+            const map = L.map('map').setView([40.7128, -74.0060], 7); // Default to NYC
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            }).addTo(map);
+
+            const supabase = window.supabase.createClient(SUPABASE_URL, ANON_KEY);
+
+            const { data: locations, error } = await supabase
+                .from('driver_locations')
+                .select('*')
+                .eq('trip_id', TRIP_ID)
+                .order('timestamp', { ascending: true });
+
+            if (error) {
+                document.getElementById('info').innerHTML = "Error loading data: " + error.message;
+                return;
+            }
+
+            console.log("Data received:", locations);
+
+            if (!locations || locations.length === 0) {
+                document.getElementById('info').innerHTML = "No locations found for this trip.";
+                return;
+            }
+
+            const latlngs = locations.map(loc => {
+                // Check if 'location' is GeoJSON object (PostgREST sometimes does this)
+                if (typeof loc.location === 'object' && loc.location.coordinates) {
+                    return [loc.location.coordinates[1], loc.location.coordinates[0]]; // GeoJSON is Lng,Lat
+                }
+
+                // Check if it's a string "SRID=4326;POINT(lon lat)"
+                if (typeof loc.location === 'string' && loc.location.startsWith('SRID=')) {
+                    const match = loc.location.match(/POINT\(([-\d\.]+) ([-\d\.]+)\)/);
+                    if (match) {
+                        return [parseFloat(match[2]), parseFloat(match[1])]; // Lat, Lng
+                    }
+                }
+
+                // If it's WKB hex string... we might be stuck without a library.
+                // But generally Supabase/PostgREST returns the string representation or GeoJSON.
+
+                // Fallback: check if we have separate columns if I added them? No.
+                return null;
+            }).filter(p => p !== null);
+
+            if (latlngs.length === 0) {
+                document.getElementById('info').innerHTML = "Could not parse location data format.";
+                return;
+            }
+
+            document.getElementById('info').innerHTML = `Trip ID: ${TRIP_ID}<br>Points: ${latlngs.length}`;
+
+            // Draw polyline
+            const polyline = L.polyline(latlngs, { color: 'blue' }).addTo(map);
+
+            // Zoom to fit
+            map.fitBounds(polyline.getBounds());
+
+            // Add markers
+            latlngs.forEach((p, i) => {
+                L.circleMarker(p, {
+                    radius: 5,
+                    color: i === 0 ? 'green' : (i === latlngs.length - 1 ? 'red' : 'blue')
+                }).addTo(map);
+            });
+        }
+    </script>
+</body>
+
+</html>

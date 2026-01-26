@@ -87,7 +87,7 @@ class _RateConClausesScreenState extends State<RateConClausesScreen> {
               destinationAddress: rateCon?.destinationAddress,
               loadId: newLoadId,
               brokerName: rateCon?.brokerName,
-              rate: rateCon?.totalRateAmount,
+              rate: rateCon?.totalRate, // Updated field
             ),
           ),
         );
@@ -329,16 +329,16 @@ class _RateConClausesScreenState extends State<RateConClausesScreen> {
                 ),
               // Clause Title
               Text(
-                clause.clauseTitle ?? 'Clause',
+                clause.titleEn ?? 'Clause', // Updated field
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
               ),
               // Punjabi Title
-              if (clause.clauseTitlePunjabi != null)
+              if (clause.titlePunjabi != null) // Updated field
                 Text(
-                  clause.clauseTitlePunjabi!,
+                  clause.titlePunjabi!, // Updated field
                   style: TextStyle(
                     fontSize: 13,
                     color: Colors.grey[600],
@@ -349,7 +349,7 @@ class _RateConClausesScreenState extends State<RateConClausesScreen> {
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
-              clause.dangerSimpleLanguage ?? '',
+              clause.explanationEn ?? '', // Updated field
               style: const TextStyle(fontSize: 14),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -357,7 +357,8 @@ class _RateConClausesScreenState extends State<RateConClausesScreen> {
           ),
           children: [
             // Punjabi Explanation
-            if (clause.dangerSimplePunjabi != null) ...[
+            if (clause.explanationPunjabi != null) ...[
+              // Updated field
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -378,7 +379,7 @@ class _RateConClausesScreenState extends State<RateConClausesScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      clause.dangerSimplePunjabi!,
+                      clause.explanationPunjabi!, // Updated field
                       style: const TextStyle(fontSize: 14),
                     ),
                   ],

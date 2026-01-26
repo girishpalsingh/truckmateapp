@@ -31,7 +31,7 @@ serve(async (req) => withLogging(req, async (req) => {
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         // Verify User and Role
-        await authorizeRole(req, supabase, ['admin', 'owner', 'dispatcher', 'driver']);
+        const { profile } = await authorizeRole(req, supabase, ['admin', 'owner', 'dispatcher', 'driver']);
 
         const body: ProcessRequest = await req.json();
         const { document_id, document_type, image_url } = body;

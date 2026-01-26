@@ -1,6 +1,5 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { createClient } from "@supabase/supabase-js";
 import Handlebars from "https://esm.sh/handlebars@4.7.7";
 import { withLogging } from "../_shared/logger.ts";
 import { NotificationService } from "../_shared/notification-service.ts";
@@ -11,7 +10,7 @@ const corsHeaders = {
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => withLogging(req, async (req) => {
+Deno.serve(async (req) => withLogging(req, async (req) => {
     if (req.method === "OPTIONS") {
         return new Response(null, { headers: corsHeaders });
     }
@@ -25,21 +24,25 @@ serve(async (req) => withLogging(req, async (req) => {
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         // Verify User and Role
-        const profile = await authorizeRole(req, supabase, ['dispatcher', 'admin', 'owner', 'driver']);
+        const { profile } = await authorizeRole(req, supabase, ['dispatcher', 'admin', 'owner', 'driver']);
 
         const body: { trip_id?: string; load_id?: string } = await req.json();
         const { trip_id, load_id } = body;
 
         if (!trip_id && !load_id) {
-            throw new Error("Missing trip_id or load_id");
+            return new Response(
+                JSON.stringify({ error: "Missing trip_id or load_id" }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
         }
 
         let rateCons: any[] = [];
         let contextId = trip_id || load_id!;
         let organizationId = "";
 
+
         // ---------------------------------------------------------
-        // 1. Fetch Data
+        // 1. Fetch Data (Updated for New Schema)
         // ---------------------------------------------------------
         if (trip_id) {
             console.log(`Fetching loads for Trip: ${trip_id}`);
@@ -52,8 +55,8 @@ serve(async (req) => withLogging(req, async (req) => {
                         organization_id,
                         rate_confirmations (
                             *,
-                            stops (*),
-                            rate_con_dispatcher_instructions (*)
+                            rc_stops (*),
+                            rc_dispatch_instructions (*)
                         )
                     )
                 `)
@@ -61,6 +64,7 @@ serve(async (req) => withLogging(req, async (req) => {
 
             if (tripError) throw tripError;
 
+            // Map deeply nested rate confirmations
             rateCons = tripData
                 .map((t: any) => t.loads?.rate_confirmations)
                 .filter((r: any) => r !== null && r !== undefined);
@@ -71,59 +75,96 @@ serve(async (req) => withLogging(req, async (req) => {
         }
 
         if (rateCons.length === 0 && load_id) {
+            console.log(`Fetching Load directly: ${load_id}`);
             // Fallback logic for direct Load ID
-            const { data: rc } = await supabase
+            // Check if load_id is actually the RC ID (internal UUID) or the Load Table ID
+
+            // Try fetching RC directly assuming load_id might be passed as rc.id
+            const { data: rc, error: rcError } = await supabase
                 .from('rate_confirmations')
-                .select('*, stops(*), rate_con_dispatcher_instructions(*)')
+                .select('*, rc_stops(*), rc_dispatch_instructions(*)')
                 .eq('id', load_id)
                 .maybeSingle();
 
+            if (rcError) console.log("Error fetching RC by ID:", rcError);
+
             if (rc) {
+                console.log("Found RC by direct ID match");
                 rateCons = [rc];
                 organizationId = rc.organization_id;
             } else {
-                const { data: loadData } = await supabase
+                console.log("Looking up Load to find RC...");
+                const { data: loadData, error: loadError } = await supabase
                     .from('loads')
                     .select(`
                         rate_confirmation_id,
                         organization_id,
                         rate_confirmations (
                             *,
-                            stops (*),
-                            rate_con_dispatcher_instructions (*)
+                            rc_stops (*),
+                            rc_dispatch_instructions (*)
                         )
                     `)
                     .eq('id', load_id)
                     .maybeSingle();
 
-                if (loadData?.rate_confirmations) {
-                    rateCons = [loadData.rate_confirmations];
-                    organizationId = loadData.organization_id;
+                if (loadError) console.log("Error fetching Load:", loadError);
+                if (loadData) {
+                    console.log("Load Data found:", JSON.stringify(loadData));
+                    if (loadData.rate_confirmations) {
+                        rateCons = [loadData.rate_confirmations];
+                        organizationId = loadData.organization_id;
+                    } else {
+                        console.log("Load found but NO rate_confirmations relation data");
+                    }
+                } else {
+                    console.log("No Load found for ID:", load_id);
                 }
             }
         }
 
         if (rateCons.length === 0) {
-            throw new Error("No rate confirmations found for the provided ID");
+            return new Response(
+                JSON.stringify({ error: "No rate confirmations found for the provided ID" }),
+                { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
         }
 
         // ---------------------------------------------------------
         // 2. Aggregate Data
         // ---------------------------------------------------------
         let allStops: any[] = [];
-        rateCons.forEach(rc => { if (rc.stops) allStops = allStops.concat(rc.stops); });
+        // New Schema: rc_stops
+        rateCons.forEach(rc => { if (rc.rc_stops) allStops = allStops.concat(rc.rc_stops); });
         allStops.sort((a, b) => new Date(a.scheduled_arrival || 0).getTime() - new Date(b.scheduled_arrival || 0).getTime());
 
-        let allInstructions: any[] = [];
+        let allInstructions: any[] = []; // Action items
         let combinedDriverView: any = { special_equipment_needed: [], transit_requirements: [] };
 
         rateCons.forEach(rc => {
-            if (rc.rate_con_dispatcher_instructions) {
-                allInstructions = allInstructions.concat(rc.rate_con_dispatcher_instructions);
-            }
-            if (rc.driver_view_data) {
-                combinedDriverView.special_equipment_needed.push(...(rc.driver_view_data.special_equipment_needed || []));
-                combinedDriverView.transit_requirements.push(...(rc.driver_view_data.transit_requirements || []));
+            // New Schema: rc_dispatch_instructions is a single object (or array of 1?) per RC usually, but relation might return array
+            // Check relations. It returns array usually if One-to-Many, but here it is One-to-One mostly. 
+            // Supabase returns array [] for hasMany or single {} for hasOne depending on query. 
+            // Since we didn't specify !inner, it returns array [].
+
+            const instrs = rc.rc_dispatch_instructions || [];
+            if (Array.isArray(instrs)) {
+                instrs.forEach(inst => {
+                    // Action Items (Array of objects)
+                    if (inst.action_items && Array.isArray(inst.action_items)) {
+                        allInstructions = allInstructions.concat(inst.action_items);
+                    }
+
+                    // Summaries & Reqs (Arrays of strings or JSON)
+                    if (inst.special_equip_en) combinedDriverView.special_equipment_needed.push(...inst.special_equip_en);
+                    if (inst.transit_reqs_en) combinedDriverView.transit_requirements.push(...inst.transit_reqs_en);
+                });
+            } else if (instrs) {
+                // Single object case
+                const inst = instrs as any;
+                if (inst.action_items) allInstructions = allInstructions.concat(inst.action_items);
+                if (inst.special_equip_en) combinedDriverView.special_equipment_needed.push(...inst.special_equip_en);
+                if (inst.transit_reqs_en) combinedDriverView.transit_requirements.push(...inst.transit_reqs_en);
             }
         });
 
@@ -133,7 +174,7 @@ serve(async (req) => withLogging(req, async (req) => {
 
 
         // ---------------------------------------------------------
-        // 2.1 Fetch Organization Details
+        // 2.1 Fetch Organization Details (Unchanged)
         // ---------------------------------------------------------
         const { data: orgData } = await supabase
             .from('organizations')
@@ -146,13 +187,11 @@ serve(async (req) => withLogging(req, async (req) => {
             if (orgData.logo_image_link.startsWith('http')) {
                 orgLogoUrl = orgData.logo_image_link;
             } else {
-                // Try 'assets' bucket first (user preferred), then 'public'
                 try {
                     const { data: signedLogo, error } = await supabase.storage.from('assets').createSignedUrl(orgData.logo_image_link, 3600);
                     if (signedLogo) {
                         orgLogoUrl = signedLogo.signedUrl;
                     } else if (error) {
-                        console.log("Logo signing error (assets bucket), trying public:", error.message);
                         // Fallback to public
                         const { data: signedLogoPublic, error: errorPublic } = await supabase.storage.from('public').createSignedUrl(orgData.logo_image_link, 3600);
                         if (signedLogoPublic) orgLogoUrl = signedLogoPublic.signedUrl;
@@ -163,12 +202,10 @@ serve(async (req) => withLogging(req, async (req) => {
             }
         }
 
-        // Fallback for testing if logo is missing
+        // Fallback for testing
         if (!orgLogoUrl) {
             orgLogoUrl = "https://placehold.co/200x60?text=Logo+Missing";
         }
-
-        // Fix for local simulator (Kong internal host)
         if (orgLogoUrl && orgLogoUrl.includes('http://kong:8000')) {
             orgLogoUrl = orgLogoUrl.replace('http://kong:8000', 'http://127.0.0.1:54321');
         }
@@ -180,13 +217,11 @@ serve(async (req) => withLogging(req, async (req) => {
             const city = addr.city || '';
             const state = addr.state || addr.province || '';
             const zip = addr.zip || addr.postal_code || '';
-            // Use <br/> for HTML line break to be handled by triple-stash {{{ }}} in Handlebars
             return [line1, `${city}, ${state} ${zip}`].filter(Boolean).join('<br/>');
         };
         const orgAddress = formatAddress(orgData?.registered_address);
         const orgName = orgData?.name || 'TruckMate';
         const mcDotNumber = orgData?.mc_dot_number || '';
-        console.log("DEBUG LOGO URL:", orgLogoUrl);
 
 
         // ---------------------------------------------------------
@@ -209,19 +244,16 @@ serve(async (req) => withLogging(req, async (req) => {
             const badgeClass = stop.stop_type?.toLowerCase().includes('pickup') ? 'bg-pickup' :
                 stop.stop_type?.toLowerCase().includes('delivery') ? 'bg-delivery' : 'bg-other';
 
-            let cityState = stop.city && stop.state ? `${stop.city}, ${stop.state}` : '';
-            const addressRaw = stop.address || '';
+            let cityState = '';
+            // New schema: facility_address is TEXT.
+            const addressRaw = stop.facility_address || stop.address || '';
 
-            if (!cityState && addressRaw) {
-                // Fallback: Try to parse "City, State Zip" from address string
-                // Example: "1500 Blair Rd, Carteret, NJ 07008"
+            // Try to extract City/State manually if not provided separately (new schema doesn't have city/state columns)
+            if (addressRaw) {
                 const parts = addressRaw.split(',').map((p: string) => p.trim());
                 if (parts.length >= 2) {
-                    // Assume format: [..., City, State Zip]
-                    const stateZip = parts[parts.length - 1]; // "NJ 07008"
-                    const city = parts[parts.length - 2];     // "Carteret"
-
-                    // Extract state from "NJ 07008" -> "NJ"
+                    const stateZip = parts[parts.length - 1];
+                    const city = parts[parts.length - 2];
                     const stateParts = stateZip.split(' ');
                     const state = stateParts[0];
 
@@ -230,7 +262,6 @@ serve(async (req) => withLogging(req, async (req) => {
                     }
                 }
             }
-
             if (!cityState) cityState = 'Location TBD';
 
             const mapLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressRaw || cityState)}`;
@@ -242,17 +273,21 @@ serve(async (req) => withLogging(req, async (req) => {
                 address: addressRaw,
                 mapLink,
                 scheduledArrival: formatDate(stop.scheduled_arrival),
-                notes: stop.special_instructions || stop.notes || '-'
+                notes: stop.special_instructions || '-'
             };
         });
 
+        // Instructions Mapping from Action Items
         const instructionsMapped = allInstructions.map((i: any) => ({
             title_en: i.title_en || 'Instruction',
             description_en: i.description_en || '',
-            hasPunjabi: !!(i.title_punjab || i.description_punjab),
-            title_punjab: i.title_punjab || '',
-            description_punjab: i.description_punjab || ''
+            hasPunjabi: !!(i.title_punjab || i.title_punjabi || i.description_punjab || i.description_punjabi),
+            title_punjab: i.title_punjab || i.title_punjabi || '', // Handle both keys just in case
+            description_punjab: i.description_punjab || i.description_punjabi || ''
         }));
+
+        // Rate Cons ID list (using load_id field from new schema)
+        const refIds = rateCons.map(r => r.load_id || r.rate_con_id).filter(Boolean).join(', ');
 
         const templateData = {
             orgLogoUrl,
@@ -260,7 +295,7 @@ serve(async (req) => withLogging(req, async (req) => {
             orgAddress,
             mcDotNumber,
             tripId: trip_id || '-',
-            refIds: rateCons.map(r => r.rate_con_id).join(', '),
+            refIds: refIds,
             brokerName: rateCons.map(r => r.broker_name).filter(Boolean).join(' & '),
             generatedDate: new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }),
             stops: stopsMapped,
@@ -272,32 +307,30 @@ serve(async (req) => withLogging(req, async (req) => {
         const compiledTemplate = Handlebars.compile(dispatchSheetTemplate);
         const htmlContent = compiledTemplate(templateData);
 
-        console.log("DEBUG HTML CONTENT LEN:", htmlContent.length);
+        // ... output to PDF service (rest is unchanged)
 
         // ---------------------------------------------------------
         // 4. Call PDF Microservice
         // ---------------------------------------------------------
-
-        // Define path explicitly (Microservice needs to know WHERE to put it)
         const folderPath = trip_id
             ? `${organizationId}/${trip_id}/dispatch_documents`
             : `${organizationId}/${contextId}/dispatch_documents`;
         const fileName = `${folderPath}/dispatcher_sheet.pdf`;
 
+        // ... (Calls to fetch and creating document record, same as before)
         console.log(`Calling PDF Service for: ${fileName}`);
 
         const pdfResponse = await fetch(PDF_SERVICE_URL, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                // Pass Service Role Key to bypass Gateway/Auth checks in the Microservice
                 "Authorization": `Bearer ${supabaseServiceKey}`
             },
             body: JSON.stringify({
-                bucketName: "documents", // Target Bucket
-                uploadPath: fileName,    // Target Path
+                bucketName: "documents",
+                uploadPath: fileName,
                 html: htmlContent,
-                css: "" // Included in template
+                css: ""
             })
         });
 
@@ -307,11 +340,6 @@ serve(async (req) => withLogging(req, async (req) => {
         }
 
         const pdfResult = await pdfResponse.json();
-        console.log(`PDF Service Success: ${pdfResult.fullUrl}`);
-
-        // ---------------------------------------------------------
-        // 5. Create Document Record
-        // ---------------------------------------------------------
         const { data: docRecord, error: docError } = await supabase
             .from('documents')
             .insert({
@@ -329,12 +357,10 @@ serve(async (req) => withLogging(req, async (req) => {
 
         if (docError) console.error("Error creating document record:", docError);
 
-        // Link to Trip
         if (trip_id && docRecord) {
             await supabase.from('trips').update({ dispatch_document_id: docRecord.id }).eq('id', trip_id);
         }
 
-        // Legacy Config Update
         if (load_id) {
             await supabase.from('load_dispatch_config').upsert({
                 load_id: load_id,
@@ -344,24 +370,16 @@ serve(async (req) => withLogging(req, async (req) => {
             }, { onConflict: 'load_id' });
         }
 
-        // ---------------------------------------------------------
-        // 6. Generate Signed URL
-        // ---------------------------------------------------------
         const { data: signedUrlData } = await supabase
             .storage
             .from('documents')
             .createSignedUrl(fileName, 30 * 24 * 3600);
 
         let finalUrl = signedUrlData?.signedUrl || fileName;
-
-        // Fix for local simulator
         if (finalUrl.includes('http://kong:8000')) {
             finalUrl = finalUrl.replace('http://kong:8000', 'http://127.0.0.1:54321');
         }
 
-        // ---------------------------------------------------------
-        // 7. Send Notification
-        // ---------------------------------------------------------
         const notificationService = new NotificationService(supabase);
         await notificationService.sendNotification({
             userId: profile.id,
@@ -378,8 +396,7 @@ serve(async (req) => withLogging(req, async (req) => {
                 message: "Dispatcher sheet created",
                 url: finalUrl,
                 path: fileName,
-                document_id: docRecord?.id,
-                html_debug: htmlContent // Debugging aid
+                document_id: docRecord?.id
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
