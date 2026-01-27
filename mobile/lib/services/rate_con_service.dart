@@ -84,40 +84,28 @@ class RateConService {
 
   /// Approve rate confirmation and create load. Returns the new Load ID.
   Future<String> approveRateCon(String id, Map<String, dynamic> edits) async {
-    AppLogger.i('RateConService: Approving RateCon $id (Client-side)');
+    AppLogger.i('RateConService: Approving RateCon $id via Edge Function');
+
     try {
-      // 1. Update status and Apply Edits to Rate Con
-      final updateData = {
-        ...edits,
-        'status': 'approved',
-        'updated_at': DateTime.now().toIso8601String(),
-      };
-      await _client.from('rate_confirmations').update(updateData).eq('id', id);
+      final response = await _client.functions.invoke(
+        'process-rate-con-response',
+        body: {
+          'rate_con_id': id,
+          'action': 'accept',
+          'edits': edits,
+        },
+      );
 
-      // 2. Fetch Rate Con Data for Mapping
-      // We re-fetch to ensure we have the latest merged data (edits + existing)
-      final rateConResponse = await _client
-          .from('rate_confirmations')
-          .select()
-          .eq('id', id)
-          .single();
+      if (response.status != 200) {
+        throw Exception('Failed to approve rate con: ${response.data}');
+      }
 
-      // 3. Create Load
-      // Map fields from Rate Con to Load
-      final loadData = {
-        'organization_id': rateConResponse['organization_id'],
-        'active_rate_con_id':
-            rateConResponse['rc_id'], // Using SERIAL ID as per new schema
-        'final_revenue': rateConResponse['total_rate'],
-        // 'payment_status': 'PENDING',
-        'status': 'BOOKED',
-        'created_at': DateTime.now().toIso8601String(),
-      };
+      final data = response.data as Map<String, dynamic>;
+      if (data.containsKey('error')) {
+        throw Exception(data['error']);
+      }
 
-      final loadResponse =
-          await _client.from('loads').insert(loadData).select().single();
-
-      return loadResponse['id'] as String;
+      return data['load_id'] as String;
     } catch (e, stack) {
       AppLogger.e('RateConService: Error approving RateCon $id', e, stack);
       rethrow;
@@ -126,11 +114,29 @@ class RateConService {
 
   /// Reject rate confirmation
   Future<void> rejectRateCon(String id) async {
-    final updates = {
-      'status': 'rejected',
-      'updated_at': DateTime.now().toIso8601String(),
-    };
-    await _client.from('rate_confirmations').update(updates).eq('id', id);
+    try {
+      final response = await _client.functions.invoke(
+        'process-rate-con-response',
+        body: {
+          'rate_con_id': id,
+          'action': 'reject',
+        },
+      );
+
+      if (response.status != 200) {
+        throw Exception('Failed to reject rate con: ${response.data}');
+      }
+
+      final data = response.data;
+      // Edge function might return plain string "OK" or json.
+      // Our implementation returns JSON: { message: "..." } or { error: "..." }
+      if (data is Map && data.containsKey('error')) {
+        throw Exception(data['error']);
+      }
+    } catch (e, stack) {
+      AppLogger.e('RateConService: Error rejecting RateCon $id', e, stack);
+      rethrow;
+    }
   }
 
   /// Get risk clauses for a rate confirmation

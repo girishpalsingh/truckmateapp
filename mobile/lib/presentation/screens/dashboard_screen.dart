@@ -5,6 +5,7 @@ import '../themes/app_theme.dart';
 import '../../services/trip_service.dart';
 import '../../services/load_service.dart';
 import '../../data/models/trip.dart';
+import '../../data/models/load.dart';
 import 'rate_con_analysis_screen.dart';
 import 'load_details_screen.dart';
 import 'notification_screen.dart';
@@ -12,6 +13,8 @@ import 'pdf_viewer_screen.dart';
 import '../providers/notification_provider.dart';
 import '../widgets/notification_toast.dart';
 import '../../../l10n/app_localizations.dart';
+import 'rate_con_list_screen.dart';
+import 'load_list_screen.dart';
 
 /// Main Dashboard Screen - Action-oriented for drivers
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -25,24 +28,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   final TripService _tripService = TripService();
   final LoadService _loadService = LoadService();
   Trip? _activeTrip;
-  Map<String, dynamic>? _latestLoad;
+  List<Load> _recentLoads = [];
   TripProfitability? _profitability;
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadActiveTrip();
+    _loadData();
     // Initialize notification listener via provider
     Future.microtask(() {
       ref.read(notificationProvider.notifier);
     });
   }
 
-  Future<void> _loadActiveTrip() async {
+  Future<void> _loadData() async {
     try {
       final trip = await _tripService.getActiveTrip();
-      final load = await _loadService.getLatestLoad();
+      final loads = await _loadService.getLoads(); // Returns List<Load>
 
       TripProfitability? profit;
       if (trip != null) {
@@ -51,7 +54,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       if (mounted) {
         setState(() {
           _activeTrip = trip;
-          _latestLoad = load;
+          _recentLoads = loads;
           _profitability = profit;
           _isLoading = false;
         });
@@ -193,7 +196,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _loadActiveTrip,
+        onRefresh: _loadData,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
@@ -208,13 +211,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               else
                 _buildNoTripCard(),
 
-              // Latest Pending Load
-              if (_latestLoad != null &&
+              // Recent Loads List
+              if (_recentLoads.isNotEmpty &&
                   (_activeTrip == null ||
                       _activeTrip!.status == 'completed' ||
                       _activeTrip!.status == 'deadhead')) ...[
                 const SizedBox(height: 16),
-                _buildLatestLoadCard(),
+                _buildRecentLoadsList(),
               ],
 
               const SizedBox(height: 24),
@@ -280,6 +283,40 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           AppLocalizations.of(context)!.addExpenseSubtitle,
                       color: AppTheme.warningColor,
                       onTap: () => Navigator.pushNamed(context, '/expense'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // New Tiles: Rate Cons & Loads
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildActionButton(
+                      icon: Icons.assignment,
+                      label: 'Rate Cons',
+                      subtitle: 'View Rate Confirmations',
+                      color: Colors.blueAccent,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => const RateConListScreen()),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildActionButton(
+                      icon: Icons.local_shipping,
+                      label: 'Loads',
+                      subtitle: 'Manage Loads',
+                      color: Colors.teal,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => const LoadListScreen()),
+                      ),
                     ),
                   ),
                 ],
@@ -513,72 +550,54 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildLatestLoadCard() {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: Colors.blue.shade50,
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => LoadDetailsScreen(load: _latestLoad!),
-            ),
-          );
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Row(children: [
-                    Icon(Icons.assignment_outlined, color: Colors.blue),
-                    SizedBox(width: 8),
-                    Text('Latest Load',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, color: Colors.blue)),
-                  ]),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8)),
-                    child: Text(
-                        (_latestLoad!['status'] ?? 'PENDING')
-                            .toString()
-                            .toUpperCase(),
-                        style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.blue.shade800,
-                            fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text('${_latestLoad!['broker_name'] ?? "Unknown Broker"}',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 16)),
-              Text('Rate: \$${_latestLoad!['primary_rate'] ?? 0}',
-                  style: TextStyle(color: Colors.green.shade700)),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: const [
-                  Text('Tap to view details',
-                      style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  Icon(Icons.chevron_right, size: 16, color: Colors.grey),
-                ],
-              )
-            ],
+  Widget _buildRecentLoadsList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            'Recent Loads',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
           ),
         ),
-      ),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _recentLoads.length,
+          itemBuilder: (context, index) {
+            final load = _recentLoads[index];
+            return Card(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: ListTile(
+                title: Text('Load #${load.brokerLoadId ?? "Unknown"}'),
+                subtitle: Text(
+                  '${load.brokerName ?? "Unknown Broker"}\n${load.status.toUpperCase()}',
+                ),
+                trailing: Text(
+                  '\$${load.primaryRate?.toStringAsFixed(0) ?? "0"}',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, color: Colors.green),
+                ),
+                isThreeLine: true,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => LoadDetailsScreen(
+                          load: load
+                              .toJson()), // Temporary mapping if Screen expects Map
+                    ),
+                  ).then((_) => _loadData());
+                },
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+      ],
     );
   }
 

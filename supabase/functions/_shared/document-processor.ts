@@ -110,6 +110,7 @@ export async function processWithGemini(imageUrl: string, documentType: string, 
             temperature: 1.0,
             maxOutputTokens: 25000,
             responseMimeType: "application/json",
+            seed: 9,
             thinkingConfig: { includeThoughts: false, thinkingLevel: "minimal" } as any
         }
     });

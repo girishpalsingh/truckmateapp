@@ -7,6 +7,8 @@ import '../../data/models/risk_clause.dart';
 import '../../services/rate_con_service.dart';
 import '../themes/app_theme.dart';
 import '../widgets/rate_con_action_buttons.dart';
+import '../../services/load_service.dart';
+import 'load_details_screen.dart';
 import 'trip_screens.dart';
 import 'rate_con_clauses_screen.dart';
 
@@ -24,6 +26,7 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
   final RateConService _service = RateConService();
   bool _isLoading = true;
   RateCon? _rateCon;
+  Map<String, dynamic>? _existingLoad;
   String? _error;
   final Map<String, dynamic> _pendingEdits = {};
 
@@ -36,6 +39,20 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
   Future<void> _fetchRateCon() async {
     try {
       final rateCon = await _service.getRateCon(widget.rateConId);
+
+      // If approved, try to find the linked Load
+      if (rateCon.status == 'approved' && rateCon.rcId != null) {
+        try {
+          final loadService = LoadService();
+          final load = await loadService.getLoadByRateConId(rateCon.rcId!);
+          if (load != null) {
+            _existingLoad = load;
+          }
+        } catch (e) {
+          debugPrint('Error fetching existing load: $e');
+        }
+      }
+
       if (mounted) {
         setState(() {
           _rateCon = rateCon;
@@ -83,42 +100,41 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
   Future<void> _handleAccept() async {
     if (_rateCon == null) return;
 
-    print('DEBUG: Handling Accept Button Press');
-    final createTrip = await showCreateTripDialog(context);
-    print('DEBUG: Dialog Result: $createTrip');
-
-    if (createTrip == null) return;
-
     setState(() => _isLoading = true);
 
     try {
-      print('DEBUG: Calling approveRateCon...');
+      debugPrint('DEBUG: Calling approveRateCon...');
       final newLoadId =
           await _service.approveRateCon(widget.rateConId, _pendingEdits);
-      print('DEBUG: Rate Con Approved. New Load ID: $newLoadId');
+      debugPrint('DEBUG: Rate Con Approved. New Load ID: $newLoadId');
 
       if (!mounted) return;
 
-      if (createTrip) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => CreateTripScreen(
-              originAddress: _rateCon!.originAddress,
-              destinationAddress: _rateCon!.destinationAddress,
-              loadId: newLoadId,
-              brokerName: _rateCon!.brokerName,
-              rate: _rateCon!.totalRate,
+      // Fetch the newly created load to pass to details screen
+      try {
+        final loadService = LoadService(); // Or inject
+        final newLoad = await loadService.getLoad(newLoadId);
+
+        if (newLoad != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Rate Confirmation Accepted'),
+              backgroundColor: Colors.green,
             ),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Rate Confirmation Accepted'),
-            backgroundColor: Colors.green,
-          ),
-        );
+          );
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => LoadDetailsScreen(load: newLoad.toJson()),
+            ),
+          );
+        } else {
+          throw Exception('Created load not found');
+        }
+      } catch (loadError) {
+        debugPrint('Error fetching new load: $loadError');
+        // Fallback to popping
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
@@ -297,22 +313,38 @@ class _RateConReviewScreenState extends ConsumerState<RateConReviewScreen> {
                               width: double.infinity,
                               child: ElevatedButton.icon(
                                 onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => CreateTripScreen(
-                                        originAddress: _rateCon!.originAddress,
-                                        destinationAddress:
-                                            _rateCon!.destinationAddress,
-                                        loadId: widget.rateConId,
-                                        brokerName: _rateCon!.brokerName,
-                                        rate: _rateCon!.totalRate,
+                                  if (_existingLoad != null) {
+                                    Navigator.pushReplacement(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => LoadDetailsScreen(
+                                            load: _existingLoad!),
                                       ),
-                                    ),
-                                  );
+                                    );
+                                  } else {
+                                    // Fallback to create trip if load not found (should be rare)
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => CreateTripScreen(
+                                          originAddress:
+                                              _rateCon!.originAddress,
+                                          destinationAddress:
+                                              _rateCon!.destinationAddress,
+                                          loadId: widget.rateConId,
+                                          brokerName: _rateCon!.brokerName,
+                                          rate: _rateCon!.totalRate,
+                                        ),
+                                      ),
+                                    );
+                                  }
                                 },
-                                icon: const Icon(Icons.add_road),
-                                label: const Text('Create Trip'),
+                                icon: Icon(_existingLoad != null
+                                    ? Icons.visibility
+                                    : Icons.add_road),
+                                label: Text(_existingLoad != null
+                                    ? 'View Load Details'
+                                    : 'Create Trip'),
                                 style: ElevatedButton.styleFrom(
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 16),

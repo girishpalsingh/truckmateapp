@@ -1,53 +1,24 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/models/load.dart';
 import '../data/models/trip.dart';
+import '../core/utils/app_logger.dart';
 
 class LoadService {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  // Approve Rate Con and Create Load
-  Future<String> approveRateCon(String rateConId) async {
-    // 1. Update Rate Con Status
-    await _supabase
-        .from('rate_confirmations')
-        .update({'status': 'approved'}).eq('id', rateConId);
+  // Get all loads for the organization
+  Future<List<Load>> getLoads() async {
+    final response = await _supabase
+        .from('loads')
+        .select(
+            '*, rate_confirmations(*, rc_stops!rc_stops_rate_confirmation_id_fkey(*, rc_commodities(*))), dispatch_assignments!dispatch_assignments_load_id_fkey(*, driver:driver_id(*), truck:truck_id(*))') // Fetch RC, rc_stops, rc_commodities, assignments
+        .order('created_at', ascending: false);
 
-    // 2. Fetch Rate Con Data for Mapping
-    final rateConResponse = await _supabase
-        .from('rate_confirmations')
-        .select('*, stops(*)')
-        .eq('id', rateConId)
-        .single();
-
-    final rateCon = rateConResponse;
-    final String orgId = rateCon['organization_id'];
-
-    // 3. Create Load
-    // Mapping fields from Rate Con to Load
-    // Broker Name might come from a linked broker table or text field?
-    // rate_confirmations schema has broker_name? I should check schema.
-    // Assuming yes based on rate-con-processor.ts
-
-    final loadData = {
-      'organization_id': orgId,
-      'rate_confirmation_id': rateConId,
-      'broker_name': rateCon['broker_name'],
-      'broker_load_id': rateCon['load_reference_number'], // Mapping logic
-      'primary_rate': rateCon['rate_amount'],
-      'status': 'assigned',
-      // 'pickup_address': ... extract from first stop?
-      // 'delivery_address': ... extract from last stop?
-      // For now we keep it simple, trips manage specific stops.
-    };
-
-    final loadResponse =
-        await _supabase.from('loads').insert(loadData).select().single();
-
-    return loadResponse['id'];
+    return (response as List).map((e) => Load.fromJson(e)).toList();
   }
 
-  // Get Latest Pending/Assigned Load for Dashboard
-  Future<Map<String, dynamic>?> getLatestLoad() async {
+  // Get Latest Pending/Assigned Load for Dashboard (Optional: Keep if needed for widget)
+  Future<Load?> getLatestLoad() async {
     final response = await _supabase
         .from('loads')
         .select('*, rate_confirmations(*)') // Fetch linked RC for details
@@ -55,7 +26,35 @@ class LoadService {
         .limit(1)
         .maybeSingle();
 
-    return response;
+    if (response == null) return null;
+    return Load.fromJson(response);
+  }
+
+  // Get single load by ID
+  Future<Load?> getLoad(String loadId) async {
+    final response = await _supabase
+        .from('loads')
+        .select('*, rate_confirmations(*)')
+        .eq('id', loadId)
+        .maybeSingle();
+
+    if (response == null) return null;
+    return Load.fromJson(response);
+  }
+
+  /// Get a load by its associated Rate Con ID (integer rc_id)
+  Future<Map<String, dynamic>?> getLoadByRateConId(int rcId) async {
+    try {
+      final response = await _supabase
+          .from('loads')
+          .select('*, rate_confirmations(*)')
+          .eq('active_rate_con_id', rcId)
+          .maybeSingle();
+      return response;
+    } catch (e, stack) {
+      AppLogger.e('LoadService: Error fetching load by rc_id', e, stack);
+      return null;
+    }
   }
 
   // Create Trip for a Load
@@ -79,5 +78,73 @@ class LoadService {
     });
 
     return tripId;
+  }
+
+  // Get current active assignment for a load
+  Future<Map<String, dynamic>?> getAssignment(String loadId) async {
+    final response = await _supabase.from('dispatch_assignments').select('''
+          *,
+          driver:driver_id(*),
+          truck:truck_id(*),
+          trailer:trailer_id(*)
+        ''').eq('load_id', loadId).eq('status', 'ACTIVE').maybeSingle();
+    return response;
+  }
+
+  // Assign Driver and Truck to Load
+  Future<void> assignLoad({
+    required String loadId,
+    required String organizationId,
+    required String driverId,
+    required String truckId,
+    String? trailerId,
+  }) async {
+    // 1. Check for existing active assignment
+    final existing = await _supabase
+        .from('dispatch_assignments')
+        .select()
+        .eq('load_id', loadId)
+        .eq('status', 'ACTIVE')
+        .maybeSingle();
+
+    if (existing != null) {
+      // Mark as cancelled or simply update it?
+      // Let's update the existing one to keep it simple and avoid constraint issues if we wanted to replace it.
+      await _supabase.from('dispatch_assignments').update({
+        'driver_id': driverId,
+        'truck_id': truckId,
+        'trailer_id': trailerId,
+        'assigned_at': DateTime.now().toIso8601String(),
+      }).eq('id', existing['id']);
+    } else {
+      // Insert new
+      await _supabase.from('dispatch_assignments').insert({
+        'load_id': loadId,
+        'organization_id': organizationId,
+        'driver_id': driverId,
+        'truck_id': truckId,
+        'trailer_id': trailerId,
+        'status': 'ACTIVE',
+      });
+    }
+
+    // Also update Load status to 'assigned' if it's currently 'created'
+    await _supabase
+        .from('loads')
+        .update({'status': 'assigned'})
+        .eq('id', loadId)
+        .eq('status', 'created');
+  }
+
+  // Generate Dispatch Sheet
+  Future<void> generateDispatchSheet(String loadId) async {
+    final response = await _supabase.functions.invoke(
+      'generate-dispatch-sheet',
+      body: {'load_id': loadId},
+    );
+
+    if (response.status != 200) {
+      throw Exception('Failed to generate dispatch sheet: ${response.data}');
+    }
   }
 }
