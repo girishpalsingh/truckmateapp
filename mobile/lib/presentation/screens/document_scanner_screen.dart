@@ -60,6 +60,23 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
     {'value': 'other', 'label': 'Other Document', 'subtitle': 'ਹੋਰ ਦਸਤਾਵੇਜ਼'},
   ];
 
+  // Arguments
+  String? _tripId;
+  String? _loadId;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments;
+    if (args is Map<String, dynamic>) {
+      if (args['type'] != null) {
+        _selectedDocType = args['type'];
+      }
+      _tripId = args['tripId'];
+      _loadId = args['loadId'];
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -478,6 +495,8 @@ class _DocumentScannerScreenState extends State<DocumentScannerScreen> {
         bytes: bytes,
         documentType: _selectedDocType ?? 'other',
         fileName: fileName,
+        tripId: _tripId,
+        loadId: _loadId,
       );
 
       print('[Scanner] ✅ Document queued successfully: ${pendingDoc.id}');

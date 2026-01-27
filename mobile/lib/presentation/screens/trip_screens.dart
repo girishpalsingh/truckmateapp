@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/utils/app_logger.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/trip_service.dart';
 import '../../services/truck_service.dart';
@@ -9,6 +10,7 @@ import '../../data/models/user_profile.dart';
 import '../../data/models/trip.dart';
 import '../../core/utils/user_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'detention_timer_screen.dart';
 import '../themes/app_theme.dart';
 
 /// Alias for NewTripScreen when creating from rate con
@@ -140,7 +142,7 @@ class _NewTripScreenState extends ConsumerState<NewTripScreen> {
         driverId: _selectedDriver?.id ?? userId,
         originAddress: _originController.text,
         destinationAddress: _destinationController.text,
-        odometerStart: int.parse(_odometerController.text),
+        odometerStart: int.tryParse(_odometerController.text) ?? 0,
       );
 
       // Start tracking
@@ -275,12 +277,9 @@ class _NewTripScreenState extends ConsumerState<NewTripScreen> {
                       controller: _odometerController,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
-                        labelText: 'Odometer',
+                        labelText: 'Odometer (Optional)',
                         prefixIcon: Icon(Icons.speed),
                       ),
-                      validator: (v) => int.tryParse(v ?? '') == null
-                          ? 'Enter valid number'
-                          : null,
                     ),
                     const SizedBox(height: 32),
                     ElevatedButton(
@@ -353,6 +352,8 @@ class ActiveTripScreen extends ConsumerStatefulWidget {
 class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
   Trip? _trip;
   bool _isLoading = true;
+  List<dynamic> _stops = [];
+  Map<String, dynamic>? _currentStop;
 
   @override
   void initState() {
@@ -366,12 +367,141 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
       setState(() {
         _trip = trip;
         _isLoading = false;
+
+        // Parse stops
+        if (trip?.load != null && trip!.load!['rate_confirmations'] != null) {
+          final rc = trip.load!['rate_confirmations'];
+          if (rc['rc_stops'] != null) {
+            _stops = List.from(rc['rc_stops']);
+            _stops.sort((a, b) => (a['sequence_number'] ?? 0)
+                .compareTo(b['sequence_number'] ?? 0));
+
+            // Find current stop (first pending or arrived)
+            _currentStop = _stops.firstWhere(
+              (s) => s['status'] != 'COMPLETED' && s['status'] != 'SKIPPED',
+              orElse: () => null,
+            );
+          }
+        }
       });
     }
   }
 
+  Future<void> _updateStopStatus(String status) async {
+    if (_currentStop == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final now = DateTime.now();
+      await TripService().updateStopStatus(
+        stopId: _currentStop!['id'],
+        status: status,
+        actualArrival: status == 'ARRIVED' ? now : null,
+        actualDeparture: status == 'COMPLETED' ? now : null,
+      );
+
+      // Reload trip to refresh state
+      await _loadTrip();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Stop marked as $status')),
+      );
+    } catch (e) {
+      AppLogger.e('Error updating stop', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  void _showArrivalDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Arrived at Stop'),
+        content: const Text('Confirm arrival at this location?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _updateStopStatus('ARRIVED');
+            },
+            child: const Text('Confirm Arrival'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDepartureDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Depart / Complete Stop'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+                'Would you like to start detention timer or upload documents?'),
+            const SizedBox(height: 12),
+            if (_currentStop?['stop_type'] == 'Delivery')
+              OutlinedButton.icon(
+                icon: const Icon(Icons.timer),
+                label: const Text('Start Detention Timer'),
+                onPressed: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DetentionTimerScreen(
+                        arrivalTime: DateTime.parse(
+                            _currentStop!['actual_arrival'] ??
+                                DateTime.now().toIso8601String()),
+                        stopAddress: _currentStop!['address'] ?? 'Current Stop',
+                      ),
+                    ),
+                  );
+                },
+              ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.upload_file),
+              label: const Text('Upload BOL / POD'),
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(
+                    context, '/scan'); // Or specific BOL upload flow
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            style: AppTheme.successButtonStyle,
+            onPressed: () {
+              Navigator.pop(context);
+              _updateStopStatus('COMPLETED');
+            },
+            child: const Text('Mark Completed'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _endTrip() async {
     final odometerController = TextEditingController();
+
     final shouldEnd = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -478,9 +608,63 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
         child: Column(
           children: [
             Card(
-              child: ListTile(
-                title: Text(
-                  '${_trip!.originAddress} → ${_trip!.destinationAddress}',
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    if (_currentStop != null) ...[
+                      Row(
+                        children: [
+                          const Icon(Icons.navigation, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          Text('Next Destination:',
+                              style: Theme.of(context).textTheme.labelLarge),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _currentStop!['address'] ?? 'Unknown Address',
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                      Text(
+                        _currentStop!['stop_type']?.toUpperCase() ?? 'STOP',
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 16),
+                      if (_currentStop!['status'] == 'PENDING' ||
+                          _currentStop!['status'] == null)
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.location_on),
+                            label: const Text('Tap to Arrive'),
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white),
+                            onPressed: _showArrivalDialog,
+                          ),
+                        )
+                      else if (_currentStop!['status'] == 'ARRIVED')
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.check),
+                            label: const Text('Complete Stop'),
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white),
+                            onPressed: _showDepartureDialog,
+                          ),
+                        ),
+                    ] else ...[
+                      const Text('All stops completed!',
+                          style: TextStyle(color: Colors.green, fontSize: 18)),
+                      const SizedBox(height: 8),
+                      const Text('You can now end the trip.'),
+                    ]
+                  ],
                 ),
               ),
             ),

@@ -501,4 +501,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appTaglineSubtitle => 'ਛੋਟੇ ਕੈਰੀਅਰਾਂ ਲਈ ਟਰੱਕਿੰਗ ਪ੍ਰਬੰਧਨ';
+
+  @override
+  String confirmReachedDestination(String destination) {
+    return 'Confirm Reached Destination $destination';
+  }
+
+  @override
+  String confirmReachedDestinationSubtitle(String destination) {
+    return 'Confirm arrival at $destination';
+  }
+
+  @override
+  String currentLocation(String lat, String long) {
+    return 'Current Location: $lat, $long';
+  }
+
+  @override
+  String get locationPermissionRequired => 'Location Permission Required';
+
+  @override
+  String get locationPermissionDenied =>
+      'Location permission is required to confirm arrival.';
 }

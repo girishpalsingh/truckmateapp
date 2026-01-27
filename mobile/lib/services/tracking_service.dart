@@ -32,6 +32,7 @@ class TrackingService {
           .select('id')
           .eq('driver_id', user.id)
           .eq('status', 'active')
+          .limit(1)
           .maybeSingle();
 
       if (response != null) {

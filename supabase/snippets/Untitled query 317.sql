@@ -1,0 +1,1 @@
+SELECT id, role FROM profiles WHERE id = '33743c0a-c156-4c87-bc21-382a91f89a60';

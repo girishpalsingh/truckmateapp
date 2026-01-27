@@ -129,11 +129,13 @@ class LoadService {
     }
 
     // Also update Load status to 'assigned' if it's currently 'created'
-    await _supabase
-        .from('loads')
-        .update({'status': 'assigned'})
-        .eq('id', loadId)
-        .eq('status', 'created');
+    // AND sync the resource IDs to the loads table for RLS/Caching
+    await _supabase.from('loads').update({
+      'status': 'assigned', // Workflow: moves from created -> assigned
+      'driver_id': driverId,
+      'truck_id': truckId,
+      'trailer_id': trailerId,
+    }).eq('id', loadId);
   }
 
   // Generate Dispatch Sheet
@@ -145,6 +147,18 @@ class LoadService {
 
     if (response.status != 200) {
       throw Exception('Failed to generate dispatch sheet: ${response.data}');
+    }
+  }
+
+  // Generate Invoice
+  Future<void> generateInvoice(String loadId) async {
+    final response = await _supabase.functions.invoke(
+      'generate-invoice',
+      body: {'load_id': loadId},
+    );
+
+    if (response.status != 200) {
+      throw Exception('Failed to generate invoice: ${response.data}');
     }
   }
 }

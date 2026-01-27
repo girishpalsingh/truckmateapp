@@ -8,7 +8,7 @@ class Load {
   final double? fuelSurcharge;
   final String status;
   final DateTime? createdAt;
-  final Map<String, dynamic>? rateConfirmation;
+  final List<dynamic>? rateConfirmations;
   final Map<String, dynamic>? activeAssignment;
 
   Load({
@@ -21,7 +21,7 @@ class Load {
     this.fuelSurcharge,
     required this.status,
     this.createdAt,
-    this.rateConfirmation,
+    this.rateConfirmations,
     this.activeAssignment,
   });
 
@@ -52,7 +52,11 @@ class Load {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : null,
-      rateConfirmation: json['rate_confirmations'],
+      rateConfirmations: json['rate_confirmations'] is List
+          ? json['rate_confirmations']
+          : (json['rate_confirmations'] != null
+              ? [json['rate_confirmations']]
+              : []),
       activeAssignment: assignment,
     );
   }
@@ -68,7 +72,7 @@ class Load {
       'fuel_surcharge': fuelSurcharge,
       'status': status,
       'created_at': createdAt?.toIso8601String(),
-      'rate_confirmations': rateConfirmation,
+      'rate_confirmations': rateConfirmations,
     };
   }
 }

@@ -1081,6 +1081,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'ਛੋਟੇ ਕੈਰੀਅਰਾਂ ਲਈ ਟਰੱਕਿੰਗ ਪ੍ਰਬੰਧਨ'**
   String get appTaglineSubtitle;
+
+  /// No description provided for @confirmReachedDestination.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm Reached Destination {destination}'**
+  String confirmReachedDestination(String destination);
+
+  /// No description provided for @confirmReachedDestinationSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm arrival at {destination}'**
+  String confirmReachedDestinationSubtitle(String destination);
+
+  /// No description provided for @currentLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Current Location: {lat}, {long}'**
+  String currentLocation(String lat, String long);
+
+  /// No description provided for @locationPermissionRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Location Permission Required'**
+  String get locationPermissionRequired;
+
+  /// No description provided for @locationPermissionDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Location permission is required to confirm arrival.'**
+  String get locationPermissionDenied;
 }
 
 class _AppLocalizationsDelegate

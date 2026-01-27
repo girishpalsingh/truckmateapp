@@ -32,4 +32,27 @@ class UserProfile {
   String toString() {
     return 'UserProfile(id: $id, fullName: $fullName, phoneNumber: $phoneNumber, email: $email, role: $role, organizationId: $organizationId)';
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+
+    return other is UserProfile &&
+        other.id == id &&
+        other.fullName == fullName &&
+        other.phoneNumber == phoneNumber &&
+        other.email == email &&
+        other.role == role &&
+        other.organizationId == organizationId;
+  }
+
+  @override
+  int get hashCode {
+    return id.hashCode ^
+        fullName.hashCode ^
+        phoneNumber.hashCode ^
+        email.hashCode ^
+        role.hashCode ^
+        organizationId.hashCode;
+  }
 }

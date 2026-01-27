@@ -9,12 +9,14 @@ class UserIdentity {
   final String? organizationId;
   final String? phoneNumber;
   final String? userName;
+  final String? role;
 
   const UserIdentity({
     required this.userId,
     this.organizationId,
     this.phoneNumber,
     this.userName,
+    this.role,
   });
 
   bool get hasOrganization =>
@@ -22,7 +24,7 @@ class UserIdentity {
 
   @override
   String toString() =>
-      'UserIdentity(userId: $userId, organizationId: $organizationId, phoneNumber: $phoneNumber, userName: $userName)';
+      'UserIdentity(userId: $userId, organizationId: $organizationId, phoneNumber: $phoneNumber, userName: $userName, role: $role)';
 }
 
 /// Utility class for user-related operations
@@ -35,6 +37,7 @@ class UserUtils {
   static const String _keyOrganizationId = 'organization_id';
   static const String _keyPhoneNumber = 'user_phone';
   static const String _keyUserName = 'user_name';
+  static const String _keyUserRole = 'user_role';
   static const String _keyIsLoggedIn = 'is_logged_in';
 
   /// Get the current user's ID from SharedPreferences
@@ -75,6 +78,24 @@ class UserUtils {
     }
   }
 
+  /// Get the current user's role from SharedPreferences
+  static Future<String?> getUserRole() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final role = prefs.getString(_keyUserRole);
+
+      if (role != null && role.isNotEmpty) {
+        return role;
+      }
+
+      debugPrint('⚠️ User has no role assigned');
+      return null;
+    } catch (e) {
+      debugPrint('❌ Failed to get user role: $e');
+      return null;
+    }
+  }
+
   /// Get the complete user identity from SharedPreferences
   /// Returns null if the user is not logged in (no valid user ID)
   static Future<UserIdentity?> getCurrentUserIdentity() async {
@@ -92,6 +113,7 @@ class UserUtils {
         organizationId: prefs.getString(_keyOrganizationId),
         phoneNumber: prefs.getString(_keyPhoneNumber),
         userName: prefs.getString(_keyUserName),
+        role: prefs.getString(_keyUserRole),
       );
 
       debugPrint('👤 Current user identity: $identity');
@@ -124,6 +146,7 @@ class UserUtils {
     String? organizationId,
     String? phoneNumber,
     String? userName,
+    String? role,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -139,6 +162,9 @@ class UserUtils {
       }
       if (userName != null && userName.isNotEmpty) {
         await prefs.setString(_keyUserName, userName);
+      }
+      if (role != null && role.isNotEmpty) {
+        await prefs.setString(_keyUserRole, role);
       }
 
       debugPrint('✅ User identity saved to preferences');

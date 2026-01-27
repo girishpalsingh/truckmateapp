@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/models/truck.dart';
+import '../data/models/trailer.dart';
 import '../core/utils/app_logger.dart';
 
 /// Service for managing trucks
@@ -10,18 +11,47 @@ class TruckService {
       : _client = client ?? Supabase.instance.client;
 
   /// Get all trucks for an organization
-  Future<List<Truck>> getTrucks(String organizationId) async {
-    AppLogger.d('TruckService: Fetching trucks for org $organizationId');
+  Future<List<Truck>> getTrucks(String organizationId,
+      {String? availabilityStatus}) async {
+    AppLogger.d(
+        'TruckService: Fetching trucks for org $organizationId status $availabilityStatus');
     try {
-      final response = await _client
-          .from('trucks')
-          .select()
-          .eq('organization_id', organizationId)
-          .order('truck_number');
+      var query =
+          _client.from('trucks').select().eq('organization_id', organizationId);
+
+      if (availabilityStatus != null) {
+        query = query.eq('availability_status', availabilityStatus);
+      }
+
+      final response = await query.order('truck_number');
 
       return (response as List).map((json) => Truck.fromJson(json)).toList();
     } catch (e, stack) {
       AppLogger.e('TruckService: Error fetching trucks', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Get all trailers for an organization
+  Future<List<Trailer>> getTrailers(String organizationId,
+      {String? availabilityStatus}) async {
+    AppLogger.d(
+        'TruckService: Fetching trailers for org $organizationId status $availabilityStatus');
+    try {
+      var query = _client
+          .from('trailers')
+          .select()
+          .eq('organization_id', organizationId);
+
+      if (availabilityStatus != null) {
+        query = query.eq('availability_status', availabilityStatus);
+      }
+
+      final response = await query.order('trailer_number');
+
+      return (response as List).map((json) => Trailer.fromJson(json)).toList();
+    } catch (e, stack) {
+      AppLogger.e('TruckService: Error fetching trailers', e, stack);
       rethrow;
     }
   }

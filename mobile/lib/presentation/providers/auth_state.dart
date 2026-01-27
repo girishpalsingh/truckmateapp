@@ -41,4 +41,27 @@ class AuthState {
       devMode: devMode ?? this.devMode,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+
+    return other is AuthState &&
+        other.status == status &&
+        other.isLoading == isLoading &&
+        other.otpSent == otpSent &&
+        other.errorMessage == errorMessage &&
+        other.userProfile == userProfile &&
+        other.devMode == devMode;
+  }
+
+  @override
+  int get hashCode {
+    return status.hashCode ^
+        isLoading.hashCode ^
+        otpSent.hashCode ^
+        errorMessage.hashCode ^
+        userProfile.hashCode ^
+        devMode.hashCode;
+  }
 }

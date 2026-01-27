@@ -56,15 +56,35 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
     // We do it here or in build using listen
   }
 
+  bool _isNavigating = false;
+
   void _checkAuthAndNavigate(AuthState state) {
-    // If authenticated, go to dashboard
-    if (state.status == AuthStatus.authenticated) {
-      Navigator.pushReplacementNamed(context, '/dashboard');
-    }
-    // If explicitly unauthenticated (checkSession done), go to login
-    else if (state.status == AuthStatus.unauthenticated) {
-      Navigator.pushReplacementNamed(context, '/login');
-    }
+    if (_isNavigating) return;
+
+    // Schedule navigation for after the build phase to avoid semantics/layout errors
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isNavigating) return;
+
+      // If authenticated, go to dashboard
+      if (state.status == AuthStatus.authenticated) {
+        _performNavigation('/dashboard');
+      }
+      // If explicitly unauthenticated (checkSession done), go to login
+      else if (state.status == AuthStatus.unauthenticated) {
+        _performNavigation('/login');
+      }
+    });
+  }
+
+  void _performNavigation(String routeName) {
+    _isNavigating = true;
+    _controller.stop(); // Stop animation
+
+    // Add a small delay to ensure frame is settled before replacing route
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, routeName);
+    });
   }
 
   @override

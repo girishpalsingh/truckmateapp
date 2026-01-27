@@ -2,4 +2,4 @@
 trigger: always_on
 ---
 
-SQL statements should also have comments
+use http://localhost:54323/project/default/sql/new?skip=true in browser to execute schema changes. do not use command line.

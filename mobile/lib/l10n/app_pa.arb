@@ -163,5 +163,10 @@
   "changePhoneNumber": "ਫ਼ੋਨ ਨੰਬਰ ਬਦਲੋ",
   "changePhoneNumberSubtitle": "ਫ਼ੋਨ ਨੰਬਰ ਬਦਲੋ",
   "appTagline": "ਛੋਟੇ ਕੈਰੀਅਰਾਂ ਲਈ ਟਰੱਕਿੰਗ ਪ੍ਰਬੰਧਨ",
-  "appTaglineSubtitle": "ਛੋਟੇ ਕੈਰੀਅਰਾਂ ਲਈ ਟਰੱਕਿੰਗ ਪ੍ਰਬੰਧਨ"
+  "appTaglineSubtitle": "ਛੋਟੇ ਕੈਰੀਅਰਾਂ ਲਈ ਟਰੱਕਿੰਗ ਪ੍ਰਬੰਧਨ",
+  "confirmReachedDestination": "ਪੁਸ਼ਟੀ ਕਰੋ ਕਿ ਤੁਸੀਂ {destination} ਪਹੁੰਚ ਗਏ ਹੋ",
+  "confirmReachedDestinationSubtitle": "{destination} ਤੇ ਪਹੁੰਚਣ ਦੀ ਪੁਸ਼ਟੀ ਕਰੋ",
+  "currentLocation": "ਮੌਜੂਦਾ ਸਥਾਨ: {lat}, {long}",
+  "locationPermissionRequired": "ਸਥਾਨ ਦੀ ਇਜਾਜ਼ਤ ਲਾਜ਼ਮੀ ਹੈ",
+  "locationPermissionDenied": "ਪਹੁੰਚਣ ਦੀ ਪੁਸ਼ਟੀ ਕਰਨ ਲਈ ਸਥਾਨ ਦੀ ਇਜਾਜ਼ਤ ਦੀ ਲੋੜ ਹੈ।"
 }

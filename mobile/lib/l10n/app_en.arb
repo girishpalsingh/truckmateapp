@@ -163,5 +163,34 @@
   "changePhoneNumber": "Change Phone Number",
   "changePhoneNumberSubtitle": "ਫ਼ੋਨ ਨੰਬਰ ਬਦਲੋ",
   "appTagline": "Trucking Management for Small Carriers",
-  "appTaglineSubtitle": "ਛੋਟੇ ਕੈਰੀਅਰਾਂ ਲਈ ਟਰੱਕਿੰਗ ਪ੍ਰਬੰਧਨ"
+  "appTaglineSubtitle": "ਛੋਟੇ ਕੈਰੀਅਰਾਂ ਲਈ ਟਰੱਕਿੰਗ ਪ੍ਰਬੰਧਨ",
+  "confirmReachedDestination": "Confirm Reached Destination {destination}",
+  "@confirmReachedDestination": {
+    "placeholders": {
+      "destination": {
+        "type": "String"
+      }
+    }
+  },
+  "confirmReachedDestinationSubtitle": "Confirm arrival at {destination}",
+  "@confirmReachedDestinationSubtitle": {
+    "placeholders": {
+      "destination": {
+        "type": "String"
+      }
+    }
+  },
+  "currentLocation": "Current Location: {lat}, {long}",
+  "@currentLocation": {
+    "placeholders": {
+      "lat": {
+        "type": "String"
+      },
+      "long": {
+        "type": "String"
+      }
+    }
+  },
+  "locationPermissionRequired": "Location Permission Required",
+  "locationPermissionDenied": "Location permission is required to confirm arrival."
 }

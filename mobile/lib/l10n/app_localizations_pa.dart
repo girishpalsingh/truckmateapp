@@ -502,4 +502,26 @@ class AppLocalizationsPa extends AppLocalizations {
 
   @override
   String get appTaglineSubtitle => 'ਛੋਟੇ ਕੈਰੀਅਰਾਂ ਲਈ ਟਰੱਕਿੰਗ ਪ੍ਰਬੰਧਨ';
+
+  @override
+  String confirmReachedDestination(String destination) {
+    return 'ਪੁਸ਼ਟੀ ਕਰੋ ਕਿ ਤੁਸੀਂ $destination ਪਹੁੰਚ ਗਏ ਹੋ';
+  }
+
+  @override
+  String confirmReachedDestinationSubtitle(String destination) {
+    return '$destination ਤੇ ਪਹੁੰਚਣ ਦੀ ਪੁਸ਼ਟੀ ਕਰੋ';
+  }
+
+  @override
+  String currentLocation(String lat, String long) {
+    return 'ਮੌਜੂਦਾ ਸਥਾਨ: $lat, $long';
+  }
+
+  @override
+  String get locationPermissionRequired => 'ਸਥਾਨ ਦੀ ਇਜਾਜ਼ਤ ਲਾਜ਼ਮੀ ਹੈ';
+
+  @override
+  String get locationPermissionDenied =>
+      'ਪਹੁੰਚਣ ਦੀ ਪੁਸ਼ਟੀ ਕਰਨ ਲਈ ਸਥਾਨ ਦੀ ਇਜਾਜ਼ਤ ਦੀ ਲੋੜ ਹੈ।';
 }

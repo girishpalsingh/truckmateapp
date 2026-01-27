@@ -147,6 +147,26 @@ class AuthService {
   bool get isLoggedIn => _client.auth.currentSession != null;
   User? get currentUser => _client.auth.currentUser;
 
+  /// Fetch the current user's profile from the database
+  Future<UserProfile?> getCurrentProfile() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return null;
+
+    try {
+      final response = await _client
+          .from('profiles')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (response == null) return null;
+      return UserProfile.fromJson(response);
+    } catch (e) {
+      AppLogger.e('AuthService: Failed to fetch current profile', e);
+      return null;
+    }
+  }
+
   Future<void> signOut() async {
     AppLogger.i('AuthService: Signing out');
     await _client.auth.signOut();

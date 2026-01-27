@@ -20,7 +20,7 @@ class TripService {
         'TripService: Fetching trips (status: $status, driver: $driverId)');
     var query = _client.from('trips').select('''
       *,
-      load:loads(*),
+      load:loads(*, rate_confirmations(*, rc_stops(*))),
       truck:trucks(truck_number, make, model),
       driver:profiles(full_name)
     ''');
@@ -56,7 +56,7 @@ class TripService {
           .from('trips')
           .select('''
           *,
-          load:loads(*),
+          load:loads(*, rate_confirmations(*, rc_stops(*))),
           truck:trucks(truck_number, make, model)
         ''')
           .eq('driver_id', userId)
@@ -69,6 +69,30 @@ class TripService {
     } catch (e, stack) {
       AppLogger.e('TripService: Error fetching active trip', e, stack);
       rethrow;
+    }
+  }
+
+  /// Get trip by load ID
+  Future<Trip?> getTripByLoadId(String loadId) async {
+    try {
+      final response = await _client
+          .from('trips')
+          .select('''
+          *,
+          load:loads(*, rate_confirmations(*, rc_stops(*))),
+          truck:trucks(truck_number, make, model),
+          driver:profiles(full_name)
+        ''')
+          .eq('load_id',
+              loadId) // Removed .neq('status', 'cancelled') as it is invalid enum
+          .limit(1)
+          .maybeSingle();
+
+      return response != null ? Trip.fromJson(response) : null;
+    } catch (e, stack) {
+      AppLogger.e(
+          'TripService: Error fetching trip for load $loadId', e, stack);
+      return null;
     }
   }
 
@@ -200,6 +224,32 @@ class TripService {
       return data['url'] as String;
     } catch (e, stack) {
       AppLogger.e('TripService: Error generating dispatch sheet', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Update stop status and timestamps
+  Future<void> updateStopStatus({
+    required String stopId,
+    required String status,
+    DateTime? actualArrival,
+    DateTime? actualDeparture,
+  }) async {
+    AppLogger.i('TripService: Updating stop $stopId status to $status');
+    try {
+      final updates = <String, dynamic>{
+        'status': status,
+      };
+      if (actualArrival != null) {
+        updates['actual_arrival'] = actualArrival.toIso8601String();
+      }
+      if (actualDeparture != null) {
+        updates['actual_departure'] = actualDeparture.toIso8601String();
+      }
+
+      await _client.from('rc_stops').update(updates).eq('id', stopId);
+    } catch (e, stack) {
+      AppLogger.e('TripService: Error updating stop status', e, stack);
       rethrow;
     }
   }

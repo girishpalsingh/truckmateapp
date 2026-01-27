@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
+import '../../core/utils/user_utils.dart';
 import '../themes/app_theme.dart';
 import '../../services/trip_service.dart';
 import '../../services/load_service.dart';
@@ -30,6 +31,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Trip? _activeTrip;
   List<Load> _recentLoads = [];
   TripProfitability? _profitability;
+  String? _userRole;
   bool _isLoading = true;
 
   @override
@@ -44,7 +46,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Future<void> _loadData() async {
     try {
-      final trip = await _tripService.getActiveTrip();
+      final role = await UserUtils.getUserRole();
+
+      // If driver, load active trip. If owner, maybe load fleet stats (for now just active trip is fine as placeholder or skip).
+      Trip? trip;
+      if (role == 'driver') {
+        trip = await _tripService.getActiveTrip();
+      }
+
       final loads = await _loadService.getLoads(); // Returns List<Load>
 
       TripProfitability? profit;
@@ -56,6 +65,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           _activeTrip = trip;
           _recentLoads = loads;
           _profitability = profit;
+          _userRole = role;
           _isLoading = false;
         });
       }
@@ -203,13 +213,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Active Trip Card
-              if (_isLoading)
-                const Center(child: CircularProgressIndicator())
-              else if (_activeTrip != null)
-                _buildActiveTripCard()
-              else
-                _buildNoTripCard(),
+              // Content based on Role
+              if (_userRole == 'driver') ...[
+                if (_isLoading)
+                  const Center(child: CircularProgressIndicator())
+                else if (_activeTrip != null)
+                  _buildActiveTripCard()
+                else
+                  _buildNoTripCard(),
+              ] else if (_userRole == 'owner' ||
+                  _userRole == 'manager' ||
+                  _userRole == 'dispatcher') ...[
+                // Owner Dashboard
+                _buildOwnerDashboardWidgets(),
+              ],
 
               // Recent Loads List
               if (_recentLoads.isNotEmpty &&
@@ -239,11 +256,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 children: [
                   Expanded(
                     child: _buildActionButton(
-                      icon: Icons.play_arrow_rounded,
-                      label: AppLocalizations.of(context)!.startTrip,
-                      subtitle: AppLocalizations.of(context)!.startTripSubtitle,
-                      color: AppTheme.successColor,
-                      onTap: () => Navigator.pushNamed(context, '/trip/new'),
+                      icon: Icons.local_shipping,
+                      label: 'All Loads',
+                      subtitle: 'ਸਾਰੇ ਲੋਡ ਵੇਖੋ', // View all loads in Punjabi
+                      color: AppTheme.primaryColor,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => const LoadListScreen()),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -516,6 +537,45 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  Widget _buildOwnerDashboardWidgets() {
+    return Column(
+      children: [
+        Row(
+          children: [
+            _buildStatItem(
+                'Available Trucks', 'Checking...', Icons.local_shipping),
+          ],
+        ),
+        // TODO: Implement actual owner stats
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                const Text('Fleet Overview',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                const Text('Owner/Manager functionality coming soon.'),
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const LoadListScreen()),
+                    );
+                  },
+                  child: const Text('View All Loads'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildNoTripCard() {
     return Card(
       elevation: 2,
@@ -556,9 +616,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            'Recent Loads',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          child: DualLanguageText(
+            primaryText: 'Latest Load',
+            subtitleText: 'ਨਵੀਨਤਮ ਲੋਡ',
+            primaryStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
           ),
@@ -566,15 +627,89 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: _recentLoads.length,
+          itemCount: _recentLoads.isEmpty ? 0 : 1, // Only show latest
           itemBuilder: (context, index) {
             final load = _recentLoads[index];
+
+            // Calculate Stop Status
+            int totalStops = 0;
+            int completedStops = 0;
+            if (load.rateConfirmations != null &&
+                load.rateConfirmations!.isNotEmpty) {
+              final rc = load.rateConfirmations!.first;
+              if (rc['rc_stops'] != null) {
+                final stops = rc['rc_stops'] as List;
+                totalStops = stops.length;
+                completedStops =
+                    stops.where((s) => s['status'] == 'COMPLETED').length;
+              }
+            }
+
+            // Determine display status
+            String statusText = load.status.toUpperCase();
+            String statusPunjabi = '';
+            Color statusColor = Colors.grey;
+
+            if (_activeTrip != null && _activeTrip!.loadId == load.id) {
+              statusText = 'TRIP STARTED';
+              statusPunjabi = 'ਟ੍ਰਿਪ ਸ਼ੁਰੂ ਹੋਇਆ';
+              statusColor = Colors.green;
+            } else if (load.status.toLowerCase() == 'delivered' ||
+                load.status.toLowerCase() == 'completed') {
+              statusText = 'TRIP ENDED';
+              statusPunjabi = 'ਟ੍ਰਿਪ ਖਤਮ ਹੋਇਆ';
+              statusColor = Colors.blue;
+            } else if (load.status.toLowerCase() == 'assigned') {
+              statusText = 'ASSIGNED';
+              statusPunjabi = 'ਸੌਂਪਿਆ ਗਿਆ';
+              statusColor = Colors.orange;
+            }
+
             return Card(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               child: ListTile(
                 title: Text('Load #${load.brokerLoadId ?? "Unknown"}'),
-                subtitle: Text(
-                  '${load.brokerName ?? "Unknown Broker"}\n${load.status.toUpperCase()}',
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${load.brokerName ?? "Unknown Broker"}'),
+                    const SizedBox(height: 4),
+                    // Status Row
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: statusColor),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(statusText,
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                      color: statusColor)),
+                              if (statusPunjabi.isNotEmpty)
+                                Text(statusPunjabi,
+                                    style: TextStyle(
+                                        fontSize: 10,
+                                        color: statusColor.withOpacity(0.8))),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Stops Status
+                        if (totalStops > 0)
+                          Text('Stops: $completedStops/$totalStops',
+                              style: const TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ],
                 ),
                 trailing: Text(
                   '\$${load.primaryRate?.toStringAsFixed(0) ?? "0"}',

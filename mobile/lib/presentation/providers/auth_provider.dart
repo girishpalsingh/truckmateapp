@@ -62,7 +62,25 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final isLoggedIn = await UserUtils.isLoggedIn();
 
       if (isLoggedIn) {
-        // Load user identity from persistence
+        // Attempt to refresh profile from DB to catch role changes
+        try {
+          final freshProfile = await _authService.getCurrentProfile();
+          if (freshProfile != null) {
+            debugPrint('🔄 Refreshed profile from DB: ${freshProfile.role}');
+            await UserUtils.saveUserIdentity(
+              userId: freshProfile.id,
+              organizationId: freshProfile.organizationId,
+              phoneNumber: freshProfile.phoneNumber,
+              userName: freshProfile.fullName,
+              role: freshProfile.role,
+            );
+          }
+        } catch (e) {
+          debugPrint('⚠️ Failed to refresh profile: $e');
+          // Proceed with cached identity
+        }
+
+        // Load user identity from persistence (now potentially updated)
         final identity = await UserUtils.getCurrentUserIdentity();
         debugPrint('👤 Session restored for user: ${identity?.userId}');
         state = state.copyWith(status: AuthStatus.authenticated);
@@ -125,6 +143,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
           organizationId: result.profile?.organizationId,
           phoneNumber: phoneNumber,
           userName: result.profile?.fullName,
+          role: result.profile?.role,
         );
       } else {
         debugPrint('⚠️ No valid user ID received from OTP verification');

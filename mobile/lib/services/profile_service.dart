@@ -11,17 +11,23 @@ class ProfileService {
 
   /// Get all profiles for an organization with a specific role
   Future<List<UserProfile>> getProfilesByRole(
-      String organizationId, String role) async {
+      String organizationId, String role,
+      {String? availabilityStatus}) async {
     AppLogger.d(
-        'ProfileService: Fetching profiles for org $organizationId with role $role');
+        'ProfileService: Fetching profiles for org $organizationId with role $role status $availabilityStatus');
     try {
-      final response = await _client
+      var query = _client
           .from('profiles')
           .select()
           .eq('organization_id', organizationId)
           .eq('role', role)
-          .eq('is_active', true)
-          .order('full_name');
+          .eq('is_active', true);
+
+      if (availabilityStatus != null) {
+        query = query.eq('availability_status', availabilityStatus);
+      }
+
+      final response = await query.order('full_name');
 
       return (response as List)
           .map((json) => UserProfile.fromJson(json))
