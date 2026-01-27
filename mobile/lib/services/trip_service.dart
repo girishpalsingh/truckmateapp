@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'expense_service.dart';
 import '../core/utils/app_logger.dart';
 import '../data/models/trip.dart';
+import '../data/queries/trip_queries.dart';
 
 /// Service for managing trips
 class TripService {
@@ -18,12 +19,9 @@ class TripService {
   }) async {
     AppLogger.d(
         'TripService: Fetching trips (status: $status, driver: $driverId)');
-    var query = _client.from('trips').select('''
-      *,
-      load:loads(*, rate_confirmations(*, rc_stops(*))),
-      truck:trucks(truck_number, make, model),
-      driver:profiles(full_name)
-    ''');
+    var query = _client
+        .from(TripQueries.table)
+        .select(TripQueries.selectTripWithRelations);
 
     if (status != null) {
       query = query.eq('status', status);
@@ -53,12 +51,8 @@ class TripService {
     AppLogger.d('TripService: Fetching active trip for user $userId');
     try {
       final response = await _client
-          .from('trips')
-          .select('''
-          *,
-          load:loads(*, rate_confirmations(*, rc_stops(*))),
-          truck:trucks(truck_number, make, model)
-        ''')
+          .from(TripQueries.table)
+          .select(TripQueries.selectActiveTrip)
           .eq('driver_id', userId)
           .eq('status', 'active')
           .order('created_at', ascending: false)
@@ -76,13 +70,8 @@ class TripService {
   Future<Trip?> getTripByLoadId(String loadId) async {
     try {
       final response = await _client
-          .from('trips')
-          .select('''
-          *,
-          load:loads(*, rate_confirmations(*, rc_stops(*))),
-          truck:trucks(truck_number, make, model),
-          driver:profiles(full_name)
-        ''')
+          .from(TripQueries.table)
+          .select(TripQueries.selectTripWithRelations)
           .eq('load_id',
               loadId) // Removed .neq('status', 'cancelled') as it is invalid enum
           .limit(1)
@@ -108,20 +97,20 @@ class TripService {
   }) async {
     AppLogger.i('TripService: Creating trip (load: $loadId)');
     try {
-      final response = await _client.from('trips').insert({
-        'organization_id': organizationId,
-        'load_id': loadId,
-        'truck_id': truckId,
-        'driver_id': driverId,
-        'origin_address': originAddress,
-        'destination_address': destinationAddress,
-        'odometer_start': odometerStart,
-        'status': loadId != null ? 'active' : 'deadhead',
-      }).select('''
-          *,
-          load:loads(*),
-          truck:trucks(truck_number, make, model)
-        ''').single();
+      final response = await _client
+          .from(TripQueries.table)
+          .insert({
+            'organization_id': organizationId,
+            'load_id': loadId,
+            'truck_id': truckId,
+            'driver_id': driverId,
+            'origin_address': originAddress,
+            'destination_address': destinationAddress,
+            'odometer_start': odometerStart,
+            'status': loadId != null ? 'active' : 'deadhead',
+          })
+          .select(TripQueries.selectTripWithRelationsForUpdate)
+          .single();
 
       final tripId = response['id'];
 
@@ -154,14 +143,11 @@ class TripService {
     AppLogger.i('TripService: Updating trip $tripId');
     try {
       final response = await _client
-          .from('trips')
+          .from(TripQueries.table)
           .update(updates)
           .eq('id', tripId)
-          .select('''
-          *,
-          load:loads(*),
-          truck:trucks(truck_number, make, model)
-        ''').single();
+          .select(TripQueries.selectTripWithRelationsForUpdate)
+          .single();
 
       return Trip.fromJson(response);
     } catch (e, stack) {
@@ -203,7 +189,7 @@ class TripService {
   }
 
   /// Generate Dispatcher Sheet
-  Future<String> generateDispatcherSheet(
+  Future<Map<String, dynamic>> generateDispatcherSheet(
       {String? tripId, String? loadId}) async {
     AppLogger.i(
         'TripService: Generating dispatcher sheet (trip: $tripId, load: $loadId)');
@@ -221,7 +207,7 @@ class TripService {
         throw Exception('Failed to generate dispatcher sheet: No URL returned');
       }
 
-      return data['url'] as String;
+      return data;
     } catch (e, stack) {
       AppLogger.e('TripService: Error generating dispatch sheet', e, stack);
       rethrow;
@@ -247,7 +233,7 @@ class TripService {
         updates['actual_departure'] = actualDeparture.toIso8601String();
       }
 
-      await _client.from('rc_stops').update(updates).eq('id', stopId);
+      await _client.from('rc_stops').update(updates).eq('stop_id', stopId);
     } catch (e, stack) {
       AppLogger.e('TripService: Error updating stop status', e, stack);
       rethrow;

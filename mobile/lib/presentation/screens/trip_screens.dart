@@ -565,8 +565,9 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final url =
+      final response =
           await TripService().generateDispatcherSheet(tripId: _trip!.id);
+      final url = response['url'] as String;
       debugPrint('Dispatcher Sheet URL: $url');
 
       final uri = Uri.parse(url);
@@ -823,8 +824,9 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final url =
+      final response =
           await TripService().generateDispatcherSheet(tripId: widget.trip.id);
+      final url = response['url'] as String;
       debugPrint('Dispatcher Sheet URL: $url');
 
       final uri = Uri.parse(url);

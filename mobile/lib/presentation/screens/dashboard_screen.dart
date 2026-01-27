@@ -224,12 +224,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ] else if (_userRole == 'owner' ||
                   _userRole == 'manager' ||
                   _userRole == 'dispatcher') ...[
-                // Owner Dashboard
-                _buildOwnerDashboardWidgets(),
+                // Owner/Manager specific widgets - currently hidden to avoid blank space
+                // _buildOwnerDashboardWidgets(),
               ],
 
-              // Recent Loads List
-              if (_recentLoads.isNotEmpty &&
+              // Recent Loads List - Hide for drivers as they only focus on active trip
+              if (_userRole != 'driver' &&
+                  _recentLoads.isNotEmpty &&
                   (_activeTrip == null ||
                       _activeTrip!.status == 'completed' ||
                       _activeTrip!.status == 'deadhead')) ...[
@@ -537,6 +538,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  /*
   Widget _buildOwnerDashboardWidgets() {
     return Column(
       children: [
@@ -548,33 +550,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ),
         // TODO: Implement actual owner stats
         const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                const Text('Fleet Overview',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                const Text('Owner/Manager functionality coming soon.'),
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => const LoadListScreen()),
-                    );
-                  },
-                  child: const Text('View All Loads'),
-                ),
-              ],
-            ),
-          ),
-        ),
       ],
     );
   }
+  */
 
   Widget _buildNoTripCard() {
     return Card(

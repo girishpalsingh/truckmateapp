@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/models/load.dart';
 import '../data/models/trip.dart';
 import '../core/utils/app_logger.dart';
+import '../data/queries/load_queries.dart';
 
 class LoadService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -9,9 +10,9 @@ class LoadService {
   // Get all loads for the organization
   Future<List<Load>> getLoads() async {
     final response = await _supabase
-        .from('loads')
-        .select(
-            '*, rate_confirmations(*, rc_stops!rc_stops_rate_confirmation_id_fkey(*, rc_commodities(*))), dispatch_assignments!dispatch_assignments_load_id_fkey(*, driver:driver_id(*), truck:truck_id(*))') // Fetch RC, rc_stops, rc_commodities, assignments
+        .from(LoadQueries.table)
+        .select(LoadQueries
+            .selectLoadWithRelations) // Fetch RC, rc_stops, rc_commodities, assignments
         .order('created_at', ascending: false);
 
     return (response as List).map((e) => Load.fromJson(e)).toList();
@@ -20,8 +21,9 @@ class LoadService {
   // Get Latest Pending/Assigned Load for Dashboard (Optional: Keep if needed for widget)
   Future<Load?> getLatestLoad() async {
     final response = await _supabase
-        .from('loads')
-        .select('*, rate_confirmations(*)') // Fetch linked RC for details
+        .from(LoadQueries.table)
+        .select(
+            LoadQueries.selectLoadWithRateCon) // Fetch linked RC for details
         .order('created_at', ascending: false)
         .limit(1)
         .maybeSingle();
@@ -33,8 +35,8 @@ class LoadService {
   // Get single load by ID
   Future<Load?> getLoad(String loadId) async {
     final response = await _supabase
-        .from('loads')
-        .select('*, rate_confirmations(*)')
+        .from(LoadQueries.table)
+        .select(LoadQueries.selectLoadWithRateCon)
         .eq('id', loadId)
         .maybeSingle();
 
@@ -46,8 +48,8 @@ class LoadService {
   Future<Map<String, dynamic>?> getLoadByRateConId(int rcId) async {
     try {
       final response = await _supabase
-          .from('loads')
-          .select('*, rate_confirmations(*)')
+          .from(LoadQueries.table)
+          .select(LoadQueries.selectLoadWithRateCon)
           .eq('active_rate_con_id', rcId)
           .maybeSingle();
       return response;
@@ -82,12 +84,12 @@ class LoadService {
 
   // Get current active assignment for a load
   Future<Map<String, dynamic>?> getAssignment(String loadId) async {
-    final response = await _supabase.from('dispatch_assignments').select('''
-          *,
-          driver:driver_id(*),
-          truck:truck_id(*),
-          trailer:trailer_id(*)
-        ''').eq('load_id', loadId).eq('status', 'ACTIVE').maybeSingle();
+    final response = await _supabase
+        .from('dispatch_assignments')
+        .select(LoadQueries.selectAssignmentWithRelations)
+        .eq('load_id', loadId)
+        .eq('status', 'ACTIVE')
+        .maybeSingle();
     return response;
   }
 
@@ -139,22 +141,35 @@ class LoadService {
   }
 
   // Generate Dispatch Sheet
-  Future<void> generateDispatchSheet(String loadId) async {
+  // Note: Function accepts load_id or trip_id.
+  // For Load ID, it's safer to pass the Rate Confirmation UUID (rc['id'])
+  // because the backend association between load -> rc might be via an integer ID that PostgREST doesn't expand easily in the function.
+  Future<Map<String, dynamic>> generateDispatchSheet(String id,
+      {String? tripId}) async {
+    AppLogger.i(
+        'LoadService: generateDispatchSheet invoking with load_id=$id, trip_id=$tripId');
     final response = await _supabase.functions.invoke(
       'generate-dispatch-sheet',
-      body: {'load_id': loadId},
+      body: {
+        'load_id': id,
+        if (tripId != null) 'trip_id': tripId,
+      },
     );
 
     if (response.status != 200) {
+      AppLogger.e(
+          'LoadService: Dispatch Sheet Generation Failed. Status: ${response.status}, Data: ${response.data}');
       throw Exception('Failed to generate dispatch sheet: ${response.data}');
     }
+
+    return response.data as Map<String, dynamic>;
   }
 
-  // Generate Invoice
-  Future<void> generateInvoice(String loadId) async {
+  // Generate Invoice (Requires Trip ID)
+  Future<void> generateInvoice(String tripId) async {
     final response = await _supabase.functions.invoke(
       'generate-invoice',
-      body: {'load_id': loadId},
+      body: {'trip_id': tripId},
     );
 
     if (response.status != 200) {

@@ -46,31 +46,43 @@ Deno.serve(async (req) => withLogging(req, async (req) => {
         // ---------------------------------------------------------
         if (trip_id) {
             console.log(`Fetching loads for Trip: ${trip_id}`);
-            const { data: tripData, error: tripError } = await supabase
+            // Step 1: Get load IDs from trip_loads
+            const { data: tripLoads, error: tlError } = await supabase
                 .from('trip_loads')
-                .select(`
-                    load_id,
-                    loads (
-                        rate_confirmation_id,
+                .select('load_id')
+                .eq('trip_id', trip_id);
+
+            if (tlError) throw tlError;
+
+            const loadIds = tripLoads?.map((tl: any) => tl.load_id) || [];
+
+            if (loadIds.length > 0) {
+                // Step 2: Fetch Loads with Rate Cons
+                const { data: loadsData, error: loadsError } = await supabase
+                    .from('loads')
+                    .select(`
+                        active_rate_con_id,
                         organization_id,
-                        rate_confirmations (
+                        rate_confirmations!active_rate_con_id (
                             *,
                             rc_stops (*),
                             rc_dispatch_instructions (*)
                         )
-                    )
-                `)
-                .eq('trip_id', trip_id);
+                    `)
+                    .in('id', loadIds);
 
-            if (tripError) throw tripError;
+                if (loadsError) throw loadsError;
 
-            // Map deeply nested rate confirmations
-            rateCons = tripData
-                .map((t: any) => t.loads?.rate_confirmations)
-                .filter((r: any) => r !== null && r !== undefined);
+                // Map deeply nested rate confirmations
+                rateCons = loadsData
+                    .map((l: any) => l.rate_confirmations)
+                    .filter((r: any) => r !== null && r !== undefined);
 
-            if (tripData.length > 0) {
-                organizationId = tripData[0].loads?.organization_id;
+                if (loadsData.length > 0) {
+                    organizationId = loadsData[0].organization_id;
+                }
+            } else {
+                console.log('No loads found for this trip.');
             }
         }
 
@@ -346,6 +358,7 @@ Deno.serve(async (req) => withLogging(req, async (req) => {
                 organization_id: organizationId,
                 trip_id: trip_id || null,
                 load_id: load_id || null,
+                uploaded_by: profile.id,
                 type: 'other',
                 image_url: fileName,
                 status: 'approved',

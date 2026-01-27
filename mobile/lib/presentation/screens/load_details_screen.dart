@@ -14,6 +14,7 @@ import 'trip_screens.dart';
 import '../../services/trip_service.dart';
 import '../../presentation/themes/app_theme.dart'; // For DualLanguageText
 import 'package:geolocator/geolocator.dart'; // Add geolocator
+import 'package:intl/intl.dart'; // Add time formatting
 import '../../l10n/app_localizations.dart'; // Correct localization import
 
 class LoadDetailsScreen extends StatefulWidget {
@@ -36,6 +37,8 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
   List<dynamic> _stops = [];
 
   bool _isTripActiveForLoad = false;
+  String? _dispatchDocumentId; // New state variable
+  String? _activeTripId; // active trip id
   final TripService _tripService = TripService();
 
   Map<String, dynamic>? _getRateCon() {
@@ -63,16 +66,23 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
         if (mounted) {
           setState(() {
             _isTripActiveForLoad = true;
+            _activeTripId = trip.id;
           });
           // Also fetch stops from the trip if available, as they might have updated statuses
           if (trip.load != null && trip.load!['rate_confirmations'] != null) {
-            final rc = trip.load!['rate_confirmations'];
-            if (rc['rc_stops'] != null) {
+            final rcRaw = trip.load!['rate_confirmations'];
+            // Handle List vs Map (Supabase returns List for one-to-many)
+            final rc = (rcRaw is List && rcRaw.isNotEmpty)
+                ? rcRaw.first
+                : (rcRaw is Map ? rcRaw : null);
+
+            if (rc != null && rc['rc_stops'] != null) {
               _stops = List.from(rc['rc_stops']);
-              _stops.sort((a, b) => (a['sequence_number'] ?? 0)
-                  .compareTo(b['sequence_number'] ?? 0));
+              _stops.sort((a, b) =>
+                  (a['stop_sequence'] ?? 0).compareTo(b['stop_sequence'] ?? 0));
             }
           }
+          _dispatchDocumentId = trip.dispatchDocumentId; // capture doc ID
           _calculateCurrentStop();
         }
       }
@@ -119,10 +129,17 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
 
   Future<void> _updateStopStatus(String status) async {
     if (_currentStop == null) return;
-    if (_currentStop!['id'] == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error: Stop ID is missing')),
-      );
+    print('Current stop: ${_currentStop}');
+    // Check for stop_id (int) or id (string)
+    final stopId =
+        _currentStop!['stop_id']?.toString() ?? _currentStop!['id']?.toString();
+
+    if (stopId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: Stop ID is missing')),
+        );
+      }
       return;
     }
 
@@ -130,7 +147,7 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
     try {
       final now = DateTime.now();
       await _tripService.updateStopStatus(
-        stopId: _currentStop!['id'],
+        stopId: stopId,
         status: status,
         actualArrival: status == 'ARRIVED' ? now : null,
         actualDeparture: status == 'COMPLETED' ? now : null,
@@ -409,13 +426,58 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
   }
 
   Future<void> _createDispatchSheet() async {
+    final rc = _getRateCon();
+
+    // DEBUG LOGGING
+    AppLogger.i('DEBUG: _createDispatchSheet called');
+    if (rc != null) {
+      AppLogger.i('DEBUG: Rate Con found: ${rc['id']} (rc_id: ${rc['rc_id']})');
+      AppLogger.i('DEBUG: Rate Con keys: ${rc.keys.toList()}');
+    } else {
+      AppLogger.e('DEBUG: Rate Con is NULL');
+    }
+
+    if (rc == null || rc['id'] == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error: No Rate Confirmation linked')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
-      await _loadService.generateDispatchSheet(widget.load['id']);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Dispatch sheet generated and sent.')),
-      );
-      setState(() => _isLoading = false);
+      AppLogger.i('DEBUG: Calling generateDispatchSheet with ID: ${rc['id']}');
+
+      // Pass the Rate Confirmation UUID directly to bypass load relation issues
+      final result = await _loadService.generateDispatchSheet(rc['id'],
+          tripId: _activeTripId);
+      AppLogger.i('DEBUG: Dispatch Sheet Result: $result');
+
+      final newDocId = result['document_id'] as String?;
+      final newUrl = result['url'] as String?;
+
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          if (newDocId != null) {
+            _dispatchDocumentId = newDocId;
+          }
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Dispatch sheet generated.')),
+        );
+
+        if (newUrl != null) {
+          // Open immediately
+          if (await canLaunchUrl(Uri.parse(newUrl))) {
+            await launchUrl(Uri.parse(newUrl),
+                mode: LaunchMode.externalApplication);
+          }
+        }
+      }
+
+      await _checkActiveTrip(); // Refresh background state
     } catch (e, stack) {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -430,7 +492,16 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
   Future<void> _createInvoice() async {
     setState(() => _isLoading = true);
     try {
-      await _loadService.generateInvoice(widget.load['id']);
+      // Invoice generation requires a TRIP ID, not a Load ID.
+      // 1. Find the active trip for this load
+      final trip = await _tripService.getTripByLoadId(widget.load['id']);
+
+      if (trip == null) {
+        throw Exception(
+            'No active trip found for this load. Cannot generate invoice.');
+      }
+
+      await _loadService.generateInvoice(trip.id);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Invoice generated and sent.')),
       );
@@ -668,24 +739,50 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                 ),
               ),
             const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: _createDispatchSheet,
-              style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12)),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.file_copy),
-                  const SizedBox(width: 8),
-                  const DualLanguageText(
-                    primaryText: 'Create Dispatch Sheet',
-                    subtitleText: 'ਡਿਸਪੈਚ ਸ਼ੀਟ ਬਣਾਓ',
-                    alignment: CrossAxisAlignment.center,
-                    primaryStyle: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ],
+            if (_dispatchDocumentId != null)
+              OutlinedButton(
+                onPressed: () => _openDocument(_dispatchDocumentId),
+                style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12)),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.visibility),
+                    const SizedBox(width: 8),
+                    const DualLanguageText(
+                      primaryText: 'View Dispatch Sheet',
+                      subtitleText: 'ਡਿਸਪੈਚ ਸ਼ੀਟ ਵੇਖੋ',
+                      alignment: CrossAxisAlignment.center,
+                      primaryStyle: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              )
+            else
+              OutlinedButton(
+                onPressed: _isLoading ? null : _createDispatchSheet,
+                style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12)),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (_isLoading)
+                      const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                    else
+                      const Icon(Icons.file_copy),
+                    const SizedBox(width: 8),
+                    const DualLanguageText(
+                      primaryText: 'Create Dispatch Sheet',
+                      subtitleText: 'ਡਿਸਪੈਚ ਸ਼ੀਟ ਬਣਾਓ',
+                      alignment: CrossAxisAlignment.center,
+                      primaryStyle: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
               ),
-            ),
             const SizedBox(height: 12),
             OutlinedButton(
               onPressed: _createInvoice,
@@ -716,43 +813,13 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
 
           const SizedBox(height: 24),
 
-          // Stops List
+          // Stops Timeline
           Text('Stops',
               style: theme.textTheme.titleMedium
                   ?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _stops.length,
-            itemBuilder: (context, index) {
-              final stop = _stops[index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
-                    child: Text('${index + 1}',
-                        style: TextStyle(color: theme.colorScheme.primary)),
-                  ),
-                  title: Text(stop['facility_address'] ?? "Unknown Address",
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(stop['stop_type']?.toUpperCase() ?? "STOP"),
-                      if (stop['special_instructions'] != null &&
-                          stop['special_instructions'].isNotEmpty)
-                        Text('Notes: ${stop['special_instructions']}',
-                            style:
-                                const TextStyle(fontStyle: FontStyle.italic)),
-                    ],
-                  ),
-                  isThreeLine: true,
-                ),
-              );
-            },
-          ),
+          _buildStopsTimeline(theme),
+          const SizedBox(height: 8),
 
           // Commodities
           if (_stops.isNotEmpty)
@@ -764,6 +831,165 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
     );
   }
 
+  Widget _buildStopsTimeline(ThemeData theme) {
+    if (_stops.isEmpty) return const Text('No stops found.');
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _stops.length,
+      itemBuilder: (context, index) {
+        final stop = _stops[index];
+        final isLast = index == _stops.length - 1;
+        final status = stop['status'] ?? 'PENDING';
+        final isCompleted = status == 'COMPLETED';
+        final isArrived = status == 'ARRIVED';
+
+        // Define colors based on status
+        Color dotColor;
+        Color lineColor;
+        if (isCompleted) {
+          dotColor = Colors.green;
+          lineColor = Colors.green;
+        } else if (isArrived) {
+          dotColor = Colors.blue;
+          lineColor = Colors.grey.shade300;
+        } else {
+          dotColor = Colors.grey;
+          lineColor = Colors.grey.shade300;
+        }
+
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Timeline Line and Dot
+              Column(
+                children: [
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                        color: dotColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: dotColor.withOpacity(0.4),
+                            blurRadius: 4,
+                            spreadRadius: 1,
+                          )
+                        ]),
+                    child: isCompleted
+                        ? const Icon(Icons.check, size: 12, color: Colors.white)
+                        : Text(
+                            '${index + 1}',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold),
+                            textAlign: TextAlign.center,
+                          ),
+                  ),
+                  if (!isLast)
+                    Expanded(
+                      child: Container(
+                        width: 2,
+                        color: lineColor,
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              // Content
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 24.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              stop['facility_address'] ?? "Unknown Address",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                decoration: isCompleted
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                                color:
+                                    isCompleted ? Colors.grey : Colors.black87,
+                              ),
+                            ),
+                          ),
+                          if (isCompleted)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'COMPLETED',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        stop['stop_type']?.toUpperCase() ?? "STOP",
+                        style: TextStyle(
+                            color: isCompleted
+                                ? Colors.grey
+                                : theme.colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12),
+                      ),
+                      if (stop['scheduled_arrival'] != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            DateFormat('MMM d, h:mm a').format(
+                                DateTime.parse(stop['scheduled_arrival'])
+                                    .toLocal()),
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color:
+                                    isCompleted ? Colors.grey : Colors.black87),
+                          ),
+                        ),
+                      if (stop['special_instructions'] != null &&
+                          stop['special_instructions'].isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Notes: ${stop['special_instructions']}',
+                            style: TextStyle(
+                                fontStyle: FontStyle.italic,
+                                color: Colors.grey.shade600,
+                                fontSize: 12),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildRateConSummaryCard(Map<String, dynamic> rc) {
     return Card(
       child: ListTile(
@@ -772,12 +998,21 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
         subtitle: Text('Status: ${rc['status'].toString().toUpperCase()}'),
         trailing: const Icon(Icons.arrow_forward_ios, size: 16),
         onTap: () {
+          final rateConId = rc['id'];
+          if (rateConId == null) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text('Error: Rate Confirmation ID is missing')),
+              );
+            }
+            return;
+          }
           // Navigate to distinct Rate Con Review/Detail Screen
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) =>
-                  RateConReviewScreen(rateConId: rc['rate_con_id']),
+              builder: (context) => RateConReviewScreen(rateConId: rateConId),
             ),
           );
         },
@@ -800,6 +1035,16 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
             onTap: () => _openDocument(rc['document_id']),
           ),
         ),
+        if (_dispatchDocumentId != null)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.assignment, color: Colors.blue),
+              title: const Text('Dispatch Sheet'),
+              subtitle: const Text('Generated for Driver'),
+              trailing: const Icon(Icons.visibility),
+              onTap: () => _openDocument(_dispatchDocumentId),
+            ),
+          ),
         // Placeholder for other docs like BOL
         // const Card(child: ListTile(leading: Icon(Icons.insert_drive_file), title: Text('Bill of Lading (Coming Soon)'))),
       ],
