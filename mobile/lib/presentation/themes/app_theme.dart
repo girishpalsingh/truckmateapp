@@ -183,6 +183,12 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         elevation: 3,
       );
+  // Button text styles
+  static TextStyle get buttonSubtitleStyle => GoogleFonts.inter(
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        color: Colors.white.withOpacity(0.9),
+      );
 }
 
 /// Widget for displaying dual-language text (English primary, Punjabi subtitle)

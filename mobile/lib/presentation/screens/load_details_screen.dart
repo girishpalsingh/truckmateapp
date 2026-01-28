@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../presentation/themes/app_theme.dart';
 import '../../services/load_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/truck_service.dart';
@@ -12,7 +13,7 @@ import 'rate_con_review_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'trip_screens.dart';
 import '../../services/trip_service.dart';
-import '../../presentation/themes/app_theme.dart'; // For DualLanguageText
+
 import 'package:geolocator/geolocator.dart'; // Add geolocator
 import 'package:intl/intl.dart'; // Add time formatting
 import '../../l10n/app_localizations.dart'; // Correct localization import
@@ -709,14 +710,14 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                     backgroundColor: Colors.blueGrey,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16)),
-                child: const DualLanguageText(
+                child: DualLanguageText(
                   primaryText: 'Trip Active - View Details',
                   subtitleText: 'ਟ੍ਰਿਪ ਐਕਟਿਵ - ਵੇਰਵੇ ਵੇਖੋ',
                   primaryStyle: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: Colors.white),
-                  subtitleStyle: TextStyle(fontSize: 12, color: Colors.white70),
+                  subtitleStyle: AppTheme.buttonSubtitleStyle,
                   alignment: CrossAxisAlignment.center,
                 ),
               )
@@ -727,14 +728,14 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16)),
-                child: const DualLanguageText(
+                child: DualLanguageText(
                   primaryText: 'Start Trip',
                   subtitleText: 'ਯਾਤਰਾ ਸ਼ੁਰੂ ਕਰੋ',
                   primaryStyle: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: Colors.white),
-                  subtitleStyle: TextStyle(fontSize: 12, color: Colors.white70),
+                  subtitleStyle: AppTheme.buttonSubtitleStyle,
                   alignment: CrossAxisAlignment.center,
                 ),
               ),
