@@ -80,6 +80,17 @@ CREATE EXTENSION IF NOT EXISTS "vector" WITH SCHEMA "public";
 
 
 
+CREATE TYPE "public"."availability_status_enum" AS ENUM (
+    'AVAILABLE',
+    'ON_TRIP',
+    'OFF_DUTY',
+    'MAINTENANCE'
+);
+
+
+ALTER TYPE "public"."availability_status_enum" OWNER TO "supabase_admin";
+
+
 CREATE TYPE "public"."dispatch_assignment_status_enum" AS ENUM (
     'ACTIVE',
     'COMPLETED',
@@ -181,6 +192,17 @@ CREATE TYPE "public"."rate_con_status" AS ENUM (
 
 
 ALTER TYPE "public"."rate_con_status" OWNER TO "supabase_admin";
+
+
+CREATE TYPE "public"."stop_status_enum" AS ENUM (
+    'PENDING',
+    'ARRIVED',
+    'COMPLETED',
+    'SKIPPED'
+);
+
+
+ALTER TYPE "public"."stop_status_enum" OWNER TO "supabase_admin";
 
 
 CREATE TYPE "public"."stop_type_enum" AS ENUM (
@@ -329,6 +351,93 @@ $$;
 
 
 ALTER FUNCTION "public"."approve_rate_con_and_create_load"("rate_con_uuid" "uuid", "edits" "jsonb") OWNER TO "supabase_admin";
+
+
+CREATE OR REPLACE FUNCTION "public"."approve_rate_con_transaction"("p_rate_con_id" "uuid", "p_edits" "jsonb", "p_user_id" "uuid") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+    v_rc_record RECORD;
+    v_new_load_id UUID;
+    v_load_data JSONB;
+BEGIN
+    -- 1. Lock the rate confirmation row
+    SELECT * INTO v_rc_record
+    FROM public.rate_confirmations
+    WHERE id = p_rate_con_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Rate confirmation not found';
+    END IF;
+
+    -- 2. Apply edits if any
+    IF p_edits IS NOT NULL THEN
+        UPDATE public.rate_confirmations
+        SET 
+            broker_name = COALESCE((p_edits->>'broker_name')::TEXT, broker_name),
+            broker_mc = COALESCE((p_edits->>'broker_mc')::TEXT, broker_mc),
+            broker_address = COALESCE((p_edits->>'broker_address')::TEXT, broker_address),
+            broker_phone = COALESCE((p_edits->>'broker_phone')::TEXT, broker_phone),
+            broker_email = COALESCE((p_edits->>'broker_email')::TEXT, broker_email),
+            carrier_name = COALESCE((p_edits->>'carrier_name')::TEXT, carrier_name),
+            carrier_dot = COALESCE((p_edits->>'carrier_dot')::TEXT, carrier_dot),
+            total_rate = COALESCE((p_edits->>'total_rate')::NUMERIC, total_rate),
+            payment_terms = COALESCE((p_edits->>'payment_terms')::TEXT, payment_terms),
+            status = 'approved',
+            updated_at = NOW()
+        WHERE id = p_rate_con_id;
+    ELSE
+        UPDATE public.rate_confirmations
+        SET status = 'approved', updated_at = NOW()
+        WHERE id = p_rate_con_id;
+    END IF;
+
+    -- Refresh record to get updated values
+    SELECT * INTO v_rc_record
+    FROM public.rate_confirmations
+    WHERE id = p_rate_con_id;
+
+    -- 3. Create Load
+    INSERT INTO public.loads (
+        organization_id,
+        active_rate_con_id,
+        broker_name,
+        broker_load_id,
+        primary_rate,
+        total_rate,
+        status,
+        dispatcher_id,
+        created_at,
+        updated_at
+    ) VALUES (
+        v_rc_record.organization_id,
+        v_rc_record.rc_id,
+        v_rc_record.broker_name,
+        v_rc_record.load_id,
+        v_rc_record.total_rate,
+        v_rc_record.total_rate,
+        'created',
+        p_user_id,
+        NOW(),
+        NOW()
+    )
+    RETURNING id INTO v_new_load_id;
+
+    -- 4. Return result
+    RETURN jsonb_build_object(
+        'load_id', v_new_load_id,
+        'message', 'Rate confirmation approved and Load created'
+    );
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."approve_rate_con_transaction"("p_rate_con_id" "uuid", "p_edits" "jsonb", "p_user_id" "uuid") OWNER TO "supabase_admin";
 
 
 CREATE OR REPLACE FUNCTION "public"."calculate_trip_profit"("trip_uuid" "uuid") RETURNS TABLE("revenue" numeric, "expenses" numeric, "detention_revenue" numeric, "net_profit" numeric, "profit_margin" numeric)
@@ -997,6 +1106,28 @@ CREATE TABLE IF NOT EXISTS "public"."load_dispatch_config" (
 ALTER TABLE "public"."load_dispatch_config" OWNER TO "supabase_admin";
 
 
+CREATE TABLE IF NOT EXISTS "public"."loads" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "organization_id" "uuid" NOT NULL,
+    "active_rate_con_id" integer,
+    "broker_name" character varying(255),
+    "broker_load_id" character varying(50),
+    "status" character varying(50) DEFAULT 'created'::character varying,
+    "primary_rate" numeric(10,2),
+    "total_rate" numeric(10,2),
+    "currency" character varying(3) DEFAULT 'USD'::character varying,
+    "dispatcher_id" "uuid",
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    "driver_id" "uuid",
+    "truck_id" "uuid",
+    "trailer_id" "uuid"
+);
+
+
+ALTER TABLE "public"."loads" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."notifications" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "organization_id" "uuid" NOT NULL,
@@ -1051,7 +1182,8 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "is_active" boolean DEFAULT true NOT NULL,
-    "fcm_token" "text"
+    "fcm_token" "text",
+    "availability_status" "public"."availability_status_enum" DEFAULT 'AVAILABLE'::"public"."availability_status_enum"
 );
 
 
@@ -1110,7 +1242,6 @@ ALTER SEQUENCE "public"."rate_confirmations_rc_id_seq" OWNED BY "public"."rate_c
 
 CREATE TABLE IF NOT EXISTS "public"."rc_charges" (
     "charge_id" integer NOT NULL,
-    "rc_id" integer,
     "rate_confirmation_id" "uuid",
     "description" character varying(255),
     "amount" numeric(10,2)
@@ -1169,7 +1300,6 @@ ALTER SEQUENCE "public"."rc_commodities_comm_id_seq" OWNED BY "public"."rc_commo
 
 CREATE TABLE IF NOT EXISTS "public"."rc_dispatch_instructions" (
     "dispatch_id" integer NOT NULL,
-    "rc_id" integer,
     "rate_confirmation_id" "uuid",
     "pickup_summary" "text",
     "delivery_summary" "text",
@@ -1234,7 +1364,6 @@ ALTER SEQUENCE "public"."rc_notifications_notif_id_seq" OWNED BY "public"."rc_no
 
 CREATE TABLE IF NOT EXISTS "public"."rc_references" (
     "ref_id" integer NOT NULL,
-    "rc_id" integer,
     "rate_confirmation_id" "uuid",
     "ref_type" character varying(50),
     "ref_value" character varying(100)
@@ -1262,14 +1391,13 @@ ALTER SEQUENCE "public"."rc_references_ref_id_seq" OWNED BY "public"."rc_referen
 
 CREATE TABLE IF NOT EXISTS "public"."rc_risk_clauses" (
     "clause_id" integer NOT NULL,
-    "rc_id" integer,
     "rate_confirmation_id" "uuid",
     "traffic_light" character varying(10),
     "clause_type" character varying(50),
-    "title_en" character varying(255),
-    "title_punjabi" "text",
-    "explanation_en" "text",
-    "explanation_punjabi" "text",
+    "clause_title" character varying(255),
+    "clause_title_punjabi" "text",
+    "danger_simple_language_english" "text",
+    "danger_simple_language_punjabi" "text",
     "original_text" "text",
     CONSTRAINT "rc_risk_clauses_traffic_light_check" CHECK ((("traffic_light")::"text" = ANY ((ARRAY['RED'::character varying, 'YELLOW'::character varying, 'GREEN'::character varying])::"text"[])))
 );
@@ -1296,7 +1424,6 @@ ALTER SEQUENCE "public"."rc_risk_clauses_clause_id_seq" OWNED BY "public"."rc_ri
 
 CREATE TABLE IF NOT EXISTS "public"."rc_stops" (
     "stop_id" integer NOT NULL,
-    "rc_id" integer,
     "rate_confirmation_id" "uuid",
     "stop_sequence" integer NOT NULL,
     "stop_type" character varying(20),
@@ -1308,6 +1435,9 @@ CREATE TABLE IF NOT EXISTS "public"."rc_stops" (
     "scheduled_arrival" timestamp with time zone,
     "scheduled_departure" timestamp with time zone,
     "special_instructions" "text",
+    "status" "public"."stop_status_enum" DEFAULT 'PENDING'::"public"."stop_status_enum",
+    "actual_arrival" timestamp with time zone,
+    "actual_departure" timestamp with time zone,
     CONSTRAINT "rc_stops_stop_type_check" CHECK ((("stop_type")::"text" = ANY ((ARRAY['Pickup'::character varying, 'Delivery'::character varying])::"text"[])))
 );
 
@@ -1354,6 +1484,7 @@ CREATE TABLE IF NOT EXISTS "public"."trailers" (
     "current_location_lng" numeric(9,6),
     "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
     "updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    "availability_status" "public"."availability_status_enum" DEFAULT 'AVAILABLE'::"public"."availability_status_enum",
     CONSTRAINT "trailers_length_feet_check" CHECK (("length_feet" = ANY (ARRAY[28, 48, 53])))
 );
 
@@ -1430,7 +1561,8 @@ CREATE TABLE IF NOT EXISTS "public"."trucks" (
     "eld_device_id" character varying(50),
     "status" "public"."truck_status_enum" DEFAULT 'ACTIVE'::"public"."truck_status_enum",
     "current_location_lat" numeric(9,6),
-    "current_location_lng" numeric(9,6)
+    "current_location_lng" numeric(9,6),
+    "availability_status" "public"."availability_status_enum" DEFAULT 'AVAILABLE'::"public"."availability_status_enum"
 );
 
 
@@ -1561,6 +1693,11 @@ ALTER TABLE ONLY "public"."invoices"
 
 ALTER TABLE ONLY "public"."load_dispatch_config"
     ADD CONSTRAINT "load_dispatch_config_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."loads"
+    ADD CONSTRAINT "loads_pkey" PRIMARY KEY ("id");
 
 
 
@@ -1781,6 +1918,22 @@ CREATE INDEX "idx_invoices_org" ON "public"."invoices" USING "btree" ("organizat
 
 
 
+CREATE INDEX "idx_loads_active_rc" ON "public"."loads" USING "btree" ("active_rate_con_id");
+
+
+
+CREATE INDEX "idx_loads_driver" ON "public"."loads" USING "btree" ("driver_id");
+
+
+
+CREATE INDEX "idx_loads_org" ON "public"."loads" USING "btree" ("organization_id");
+
+
+
+CREATE INDEX "idx_loads_status" ON "public"."loads" USING "btree" ("status");
+
+
+
 CREATE INDEX "idx_profiles_org" ON "public"."profiles" USING "btree" ("organization_id");
 
 
@@ -1798,6 +1951,10 @@ CREATE INDEX "idx_trip_loads_trip" ON "public"."trip_loads" USING "btree" ("trip
 
 
 CREATE INDEX "idx_trips_driver" ON "public"."trips" USING "btree" ("driver_id");
+
+
+
+CREATE INDEX "idx_trips_load_id" ON "public"."trips" USING "btree" ("load_id");
 
 
 
@@ -1846,6 +2003,10 @@ CREATE OR REPLACE TRIGGER "update_expenses_updated_at" BEFORE UPDATE ON "public"
 
 
 CREATE OR REPLACE TRIGGER "update_invoices_updated_at" BEFORE UPDATE ON "public"."invoices" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
+
+
+
+CREATE OR REPLACE TRIGGER "update_loads_updated_at" BEFORE UPDATE ON "public"."loads" FOR EACH ROW EXECUTE FUNCTION "public"."update_updated_at_column"();
 
 
 
@@ -1920,6 +2081,11 @@ ALTER TABLE ONLY "public"."dispatch_assignments"
 
 
 ALTER TABLE ONLY "public"."dispatch_assignments"
+    ADD CONSTRAINT "dispatch_assignments_load_id_fkey" FOREIGN KEY ("load_id") REFERENCES "public"."loads"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."dispatch_assignments"
     ADD CONSTRAINT "dispatch_assignments_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
 
 
@@ -1936,6 +2102,11 @@ ALTER TABLE ONLY "public"."dispatch_assignments"
 
 ALTER TABLE ONLY "public"."dispatch_events"
     ADD CONSTRAINT "dispatch_events_driver_id_fkey" FOREIGN KEY ("driver_id") REFERENCES "public"."profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."dispatch_events"
+    ADD CONSTRAINT "dispatch_events_load_id_fkey" FOREIGN KEY ("load_id") REFERENCES "public"."loads"("id") ON DELETE CASCADE;
 
 
 
@@ -2024,6 +2195,11 @@ ALTER TABLE ONLY "public"."organizations"
 
 
 
+ALTER TABLE ONLY "public"."trips"
+    ADD CONSTRAINT "fk_trips_loads" FOREIGN KEY ("load_id") REFERENCES "public"."loads"("id") ON DELETE SET NULL;
+
+
+
 ALTER TABLE ONLY "public"."ifta_reports"
     ADD CONSTRAINT "ifta_reports_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
 
@@ -2045,7 +2221,42 @@ ALTER TABLE ONLY "public"."invoices"
 
 
 ALTER TABLE ONLY "public"."load_dispatch_config"
+    ADD CONSTRAINT "load_dispatch_config_load_id_fkey" FOREIGN KEY ("load_id") REFERENCES "public"."loads"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."load_dispatch_config"
     ADD CONSTRAINT "load_dispatch_config_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."loads"
+    ADD CONSTRAINT "loads_active_rate_con_id_fkey" FOREIGN KEY ("active_rate_con_id") REFERENCES "public"."rate_confirmations"("rc_id");
+
+
+
+ALTER TABLE ONLY "public"."loads"
+    ADD CONSTRAINT "loads_dispatcher_id_fkey" FOREIGN KEY ("dispatcher_id") REFERENCES "public"."profiles"("id");
+
+
+
+ALTER TABLE ONLY "public"."loads"
+    ADD CONSTRAINT "loads_driver_id_fkey" FOREIGN KEY ("driver_id") REFERENCES "public"."profiles"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."loads"
+    ADD CONSTRAINT "loads_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."loads"
+    ADD CONSTRAINT "loads_trailer_id_fkey" FOREIGN KEY ("trailer_id") REFERENCES "public"."trailers"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."loads"
+    ADD CONSTRAINT "loads_truck_id_fkey" FOREIGN KEY ("truck_id") REFERENCES "public"."trucks"("id") ON DELETE SET NULL;
 
 
 
@@ -2089,11 +2300,6 @@ ALTER TABLE ONLY "public"."rc_charges"
 
 
 
-ALTER TABLE ONLY "public"."rc_charges"
-    ADD CONSTRAINT "rc_charges_rc_id_fkey" FOREIGN KEY ("rc_id") REFERENCES "public"."rate_confirmations"("rc_id") ON DELETE CASCADE;
-
-
-
 ALTER TABLE ONLY "public"."rc_commodities"
     ADD CONSTRAINT "rc_commodities_stop_id_fkey" FOREIGN KEY ("stop_id") REFERENCES "public"."rc_stops"("stop_id") ON DELETE CASCADE;
 
@@ -2101,11 +2307,6 @@ ALTER TABLE ONLY "public"."rc_commodities"
 
 ALTER TABLE ONLY "public"."rc_dispatch_instructions"
     ADD CONSTRAINT "rc_dispatch_instructions_rate_confirmation_id_fkey" FOREIGN KEY ("rate_confirmation_id") REFERENCES "public"."rate_confirmations"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."rc_dispatch_instructions"
-    ADD CONSTRAINT "rc_dispatch_instructions_rc_id_fkey" FOREIGN KEY ("rc_id") REFERENCES "public"."rate_confirmations"("rc_id") ON DELETE CASCADE;
 
 
 
@@ -2119,28 +2320,13 @@ ALTER TABLE ONLY "public"."rc_references"
 
 
 
-ALTER TABLE ONLY "public"."rc_references"
-    ADD CONSTRAINT "rc_references_rc_id_fkey" FOREIGN KEY ("rc_id") REFERENCES "public"."rate_confirmations"("rc_id") ON DELETE CASCADE;
-
-
-
 ALTER TABLE ONLY "public"."rc_risk_clauses"
     ADD CONSTRAINT "rc_risk_clauses_rate_confirmation_id_fkey" FOREIGN KEY ("rate_confirmation_id") REFERENCES "public"."rate_confirmations"("id") ON DELETE CASCADE;
 
 
 
-ALTER TABLE ONLY "public"."rc_risk_clauses"
-    ADD CONSTRAINT "rc_risk_clauses_rc_id_fkey" FOREIGN KEY ("rc_id") REFERENCES "public"."rate_confirmations"("rc_id") ON DELETE CASCADE;
-
-
-
 ALTER TABLE ONLY "public"."rc_stops"
     ADD CONSTRAINT "rc_stops_rate_confirmation_id_fkey" FOREIGN KEY ("rate_confirmation_id") REFERENCES "public"."rate_confirmations"("id") ON DELETE CASCADE;
-
-
-
-ALTER TABLE ONLY "public"."rc_stops"
-    ADD CONSTRAINT "rc_stops_rc_id_fkey" FOREIGN KEY ("rc_id") REFERENCES "public"."rate_confirmations"("rc_id") ON DELETE CASCADE;
 
 
 
@@ -2187,6 +2373,22 @@ CREATE POLICY "Drivers can manage own trips" ON "public"."trips" TO "authenticat
 
 
 
+CREATE POLICY "Drivers can update assigned loads" ON "public"."loads" FOR UPDATE TO "authenticated" USING ((("organization_id" = ( SELECT "profiles"."organization_id"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"()))) AND ("driver_id" = "auth"."uid"()))) WITH CHECK ((("organization_id" = ( SELECT "profiles"."organization_id"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"()))) AND ("driver_id" = "auth"."uid"())));
+
+
+
+CREATE POLICY "Drivers can view assigned loads" ON "public"."loads" FOR SELECT TO "authenticated" USING ((("organization_id" = ( SELECT "profiles"."organization_id"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"()))) AND ((( SELECT "profiles"."role"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"())) = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"])) OR ("driver_id" = "auth"."uid"()))));
+
+
+
 CREATE POLICY "Drivers/Managers can manage trip_loads" ON "public"."trip_loads" TO "authenticated" USING (("trip_id" IN ( SELECT "trips"."id"
    FROM "public"."trips"
   WHERE (("trips"."organization_id" IN ( SELECT "profiles"."organization_id"
@@ -2205,7 +2407,7 @@ CREATE POLICY "Drivers/Managers can manage trip_loads" ON "public"."trip_loads" 
 
 CREATE POLICY "Inherit Clause Org Policy" ON "public"."rc_notifications" USING ((EXISTS ( SELECT 1
    FROM ("public"."rc_risk_clauses" "c"
-     JOIN "public"."rate_confirmations" "rc" ON (("c"."rc_id" = "rc"."rc_id")))
+     JOIN "public"."rate_confirmations" "rc" ON (("c"."rate_confirmation_id" = "rc"."id")))
   WHERE (("c"."clause_id" = "rc_notifications"."clause_id") AND ("rc"."organization_id" = ( SELECT "profiles"."organization_id"
            FROM "public"."profiles"
           WHERE ("profiles"."id" = "auth"."uid"())))))));
@@ -2214,7 +2416,7 @@ CREATE POLICY "Inherit Clause Org Policy" ON "public"."rc_notifications" USING (
 
 CREATE POLICY "Inherit RC Org Policy" ON "public"."rc_charges" USING ((EXISTS ( SELECT 1
    FROM "public"."rate_confirmations" "rc"
-  WHERE (("rc"."rc_id" = "rc_charges"."rc_id") AND ("rc"."organization_id" = ( SELECT "profiles"."organization_id"
+  WHERE (("rc"."id" = "rc_charges"."rate_confirmation_id") AND ("rc"."organization_id" = ( SELECT "profiles"."organization_id"
            FROM "public"."profiles"
           WHERE ("profiles"."id" = "auth"."uid"())))))));
 
@@ -2222,7 +2424,7 @@ CREATE POLICY "Inherit RC Org Policy" ON "public"."rc_charges" USING ((EXISTS ( 
 
 CREATE POLICY "Inherit RC Org Policy" ON "public"."rc_dispatch_instructions" USING ((EXISTS ( SELECT 1
    FROM "public"."rate_confirmations" "rc"
-  WHERE (("rc"."rc_id" = "rc_dispatch_instructions"."rc_id") AND ("rc"."organization_id" = ( SELECT "profiles"."organization_id"
+  WHERE (("rc"."id" = "rc_dispatch_instructions"."rate_confirmation_id") AND ("rc"."organization_id" = ( SELECT "profiles"."organization_id"
            FROM "public"."profiles"
           WHERE ("profiles"."id" = "auth"."uid"())))))));
 
@@ -2230,7 +2432,7 @@ CREATE POLICY "Inherit RC Org Policy" ON "public"."rc_dispatch_instructions" USI
 
 CREATE POLICY "Inherit RC Org Policy" ON "public"."rc_references" USING ((EXISTS ( SELECT 1
    FROM "public"."rate_confirmations" "rc"
-  WHERE (("rc"."rc_id" = "rc_references"."rc_id") AND ("rc"."organization_id" = ( SELECT "profiles"."organization_id"
+  WHERE (("rc"."id" = "rc_references"."rate_confirmation_id") AND ("rc"."organization_id" = ( SELECT "profiles"."organization_id"
            FROM "public"."profiles"
           WHERE ("profiles"."id" = "auth"."uid"())))))));
 
@@ -2238,7 +2440,7 @@ CREATE POLICY "Inherit RC Org Policy" ON "public"."rc_references" USING ((EXISTS
 
 CREATE POLICY "Inherit RC Org Policy" ON "public"."rc_risk_clauses" USING ((EXISTS ( SELECT 1
    FROM "public"."rate_confirmations" "rc"
-  WHERE (("rc"."rc_id" = "rc_risk_clauses"."rc_id") AND ("rc"."organization_id" = ( SELECT "profiles"."organization_id"
+  WHERE (("rc"."id" = "rc_risk_clauses"."rate_confirmation_id") AND ("rc"."organization_id" = ( SELECT "profiles"."organization_id"
            FROM "public"."profiles"
           WHERE ("profiles"."id" = "auth"."uid"())))))));
 
@@ -2246,7 +2448,7 @@ CREATE POLICY "Inherit RC Org Policy" ON "public"."rc_risk_clauses" USING ((EXIS
 
 CREATE POLICY "Inherit RC Org Policy" ON "public"."rc_stops" USING ((EXISTS ( SELECT 1
    FROM "public"."rate_confirmations" "rc"
-  WHERE (("rc"."rc_id" = "rc_stops"."rc_id") AND ("rc"."organization_id" = ( SELECT "profiles"."organization_id"
+  WHERE (("rc"."id" = "rc_stops"."rate_confirmation_id") AND ("rc"."organization_id" = ( SELECT "profiles"."organization_id"
            FROM "public"."profiles"
           WHERE ("profiles"."id" = "auth"."uid"())))))));
 
@@ -2254,7 +2456,7 @@ CREATE POLICY "Inherit RC Org Policy" ON "public"."rc_stops" USING ((EXISTS ( SE
 
 CREATE POLICY "Inherit Stop Org Policy" ON "public"."rc_commodities" USING ((EXISTS ( SELECT 1
    FROM ("public"."rc_stops" "s"
-     JOIN "public"."rate_confirmations" "rc" ON (("s"."rc_id" = "rc"."rc_id")))
+     JOIN "public"."rate_confirmations" "rc" ON (("s"."rate_confirmation_id" = "rc"."id")))
   WHERE (("s"."stop_id" = "rc_commodities"."stop_id") AND ("rc"."organization_id" = ( SELECT "profiles"."organization_id"
            FROM "public"."profiles"
           WHERE ("profiles"."id" = "auth"."uid"())))))));
@@ -2293,7 +2495,11 @@ CREATE POLICY "Managers can manage load dispatch config" ON "public"."load_dispa
 
 
 
-CREATE POLICY "Managers can manage trailers" ON "public"."trailers" TO "authenticated" USING ((("organization_id" = "public"."get_user_organization_id"()) AND ("public"."get_user_role"() = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"]))));
+CREATE POLICY "Managers can manage trailers" ON "public"."trailers" TO "authenticated" USING ((("organization_id" = ( SELECT "profiles"."organization_id"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"()))) AND (( SELECT "profiles"."role"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"())) = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"]))));
 
 
 
@@ -2351,6 +2557,12 @@ CREATE POLICY "Users can insert bol_references" ON "public"."bol_references" FOR
 
 
 
+CREATE POLICY "Users can insert own org loads" ON "public"."loads" FOR INSERT WITH CHECK (("organization_id" IN ( SELECT "profiles"."organization_id"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"()))));
+
+
+
 CREATE POLICY "Users can insert their own devices" ON "public"."devices" FOR INSERT TO "authenticated" WITH CHECK (true);
 
 
@@ -2374,6 +2586,12 @@ CREATE POLICY "Users can update own documents" ON "public"."documents" FOR UPDAT
 CREATE POLICY "Users can update own expenses" ON "public"."expenses" FOR UPDATE TO "authenticated" USING ((("organization_id" = "public"."get_user_organization_id"()) AND (("trip_id" IN ( SELECT "trips"."id"
    FROM "public"."trips"
   WHERE ("trips"."driver_id" = "auth"."uid"()))) OR ("public"."get_user_role"() = ANY (ARRAY['owner'::"public"."user_role", 'manager'::"public"."user_role", 'dispatcher'::"public"."user_role", 'orgadmin'::"public"."user_role"])))));
+
+
+
+CREATE POLICY "Users can update own org loads" ON "public"."loads" FOR UPDATE USING (("organization_id" IN ( SELECT "profiles"."organization_id"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"()))));
 
 
 
@@ -2467,7 +2685,9 @@ CREATE POLICY "Users can view org profiles" ON "public"."profiles" FOR SELECT TO
 
 
 
-CREATE POLICY "Users can view org trailers" ON "public"."trailers" FOR SELECT TO "authenticated" USING (("organization_id" = "public"."get_user_organization_id"()));
+CREATE POLICY "Users can view org trailers" ON "public"."trailers" FOR SELECT TO "authenticated" USING (("organization_id" = ( SELECT "profiles"."organization_id"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"()))));
 
 
 
@@ -2484,6 +2704,12 @@ CREATE POLICY "Users can view org trips" ON "public"."trips" FOR SELECT TO "auth
 
 
 CREATE POLICY "Users can view org trucks" ON "public"."trucks" FOR SELECT TO "authenticated" USING (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
+CREATE POLICY "Users can view own org loads" ON "public"."loads" FOR SELECT USING (("organization_id" IN ( SELECT "profiles"."organization_id"
+   FROM "public"."profiles"
+  WHERE ("profiles"."id" = "auth"."uid"()))));
 
 
 
@@ -2540,6 +2766,9 @@ ALTER TABLE "public"."invoices" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."load_dispatch_config" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."loads" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."notifications" ENABLE ROW LEVEL SECURITY;
@@ -5232,6 +5461,13 @@ GRANT ALL ON FUNCTION "public"."approve_rate_con_and_create_load"("rate_con_uuid
 
 
 
+GRANT ALL ON FUNCTION "public"."approve_rate_con_transaction"("p_rate_con_id" "uuid", "p_edits" "jsonb", "p_user_id" "uuid") TO "postgres";
+GRANT ALL ON FUNCTION "public"."approve_rate_con_transaction"("p_rate_con_id" "uuid", "p_edits" "jsonb", "p_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."approve_rate_con_transaction"("p_rate_con_id" "uuid", "p_edits" "jsonb", "p_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."approve_rate_con_transaction"("p_rate_con_id" "uuid", "p_edits" "jsonb", "p_user_id" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "postgres";
 GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "anon";
 GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "authenticated";
@@ -6266,6 +6502,12 @@ GRANT ALL ON TABLE "public"."load_dispatch_config" TO "postgres";
 GRANT ALL ON TABLE "public"."load_dispatch_config" TO "anon";
 GRANT ALL ON TABLE "public"."load_dispatch_config" TO "authenticated";
 GRANT ALL ON TABLE "public"."load_dispatch_config" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."loads" TO "anon";
+GRANT ALL ON TABLE "public"."loads" TO "authenticated";
+GRANT ALL ON TABLE "public"."loads" TO "service_role";
 
 
 
