@@ -561,6 +561,9 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
         appBar: AppBar(
           title: const Text('Load Details'),
           bottom: const TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
             tabs: [
               Tab(text: 'Details'),
               Tab(text: 'Documents'),
@@ -1039,10 +1042,10 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
         if (_dispatchDocumentId != null)
           Card(
             child: ListTile(
-              leading: const Icon(Icons.assignment, color: Colors.blue),
+              leading: const Icon(Icons.picture_as_pdf, color: Colors.blue),
               title: const Text('Dispatch Sheet'),
               subtitle: const Text('Generated for Driver'),
-              trailing: const Icon(Icons.visibility),
+              trailing: const Icon(Icons.download),
               onTap: () => _openDocument(_dispatchDocumentId),
             ),
           ),

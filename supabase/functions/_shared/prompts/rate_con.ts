@@ -113,7 +113,8 @@ JSON Schema:
               "traffic_light": { "type": "string", "enum": ["RED", "YELLOW", "GREEN"] },
               "clause_title": { "type": "string" },
               "clause_title_punjabi": { "type": "string" },
-              "danger_simple_language": { "type": "string" },
+              "danger_simple_language_english": { "type": "string" },
+              "danger_simple_language_punjabi": { "type": "string" },
               "original_text": { "type": "string" },
               "notification": {
                 "type": "object",

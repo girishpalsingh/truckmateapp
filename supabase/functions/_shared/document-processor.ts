@@ -14,7 +14,7 @@ if (!GEMINI_API_KEY) {
 
 
 const GEMINI_MODEL = config.llm.gemini.model;
-const GEMINI_EMBEDDING_MODEL = "text-embedding-004";
+const GEMINI_EMBEDDING_MODEL = "embedding-001";
 
 const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
@@ -166,17 +166,22 @@ export async function processWithGemini(imageUrl: string, documentType: string, 
 
 // Generate embedding for semantic search
 export async function generateEmbedding(text: string): Promise<number[]> {
-    const result = await genAI.models.embedContent({
-        model: GEMINI_EMBEDDING_MODEL,
-        contents: [
-            {
-                parts: [
-                    { text: text }
-                ]
-            }
-        ]
-    });
-    return result.embeddings?.[0]?.values || [];
+    try {
+        const result = await genAI.models.embedContent({
+            model: GEMINI_EMBEDDING_MODEL,
+            contents: [
+                {
+                    parts: [
+                        { text: text }
+                    ]
+                }
+            ]
+        });
+        return result.embeddings?.[0]?.values || [];
+    } catch (e) {
+        console.error("Embedding generation failed (ignoring to proceed with document):", e);
+        return [];
+    }
 }
 
 /**

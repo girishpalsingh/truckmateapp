@@ -329,16 +329,16 @@ class _RateConClausesScreenState extends State<RateConClausesScreen> {
                 ),
               // Clause Title
               Text(
-                clause.titleEn ?? 'Clause', // Updated field
+                clause.clauseTitle ?? 'Clause', // Updated field
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
               ),
               // Punjabi Title
-              if (clause.titlePunjabi != null) // Updated field
+              if (clause.clauseTitlePunjabi != null) // Updated field
                 Text(
-                  clause.titlePunjabi!, // Updated field
+                  clause.clauseTitlePunjabi!, // Updated field
                   style: TextStyle(
                     fontSize: 13,
                     color: Colors.grey[600],
@@ -349,7 +349,7 @@ class _RateConClausesScreenState extends State<RateConClausesScreen> {
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
-              clause.explanationEn ?? '', // Updated field
+              clause.dangerSimpleLanguageEnglish ?? '', // Updated field
               style: const TextStyle(fontSize: 14),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -357,7 +357,7 @@ class _RateConClausesScreenState extends State<RateConClausesScreen> {
           ),
           children: [
             // Punjabi Explanation
-            if (clause.explanationPunjabi != null) ...[
+            if (clause.dangerSimpleLanguagePunjabi != null) ...[
               // Updated field
               Container(
                 width: double.infinity,
@@ -379,7 +379,7 @@ class _RateConClausesScreenState extends State<RateConClausesScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      clause.explanationPunjabi!, // Updated field
+                      clause.dangerSimpleLanguagePunjabi!, // Updated field
                       style: const TextStyle(fontSize: 14),
                     ),
                   ],

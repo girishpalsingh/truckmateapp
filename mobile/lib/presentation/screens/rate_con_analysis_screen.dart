@@ -101,10 +101,10 @@ class _RateConAnalysisScreenState extends ConsumerState<RateConAnalysisScreen> {
       buffer.writeln('⚠️ Risk Analysis (ਖਤਰੇ ਦਾ ਵਿਸ਼ਲੇਸ਼ਣ):');
       for (var clause in rc.riskClauses) {
         final emoji = clause.trafficLightDisplay;
-        final title = clause.titleEn ?? 'Clause';
-        final titlePa = clause.titlePunjabi ?? '';
-        final desc = clause.explanationEn ?? '';
-        final descPa = clause.explanationPunjabi ?? '';
+        final title = clause.clauseTitle ?? 'Clause';
+        final titlePa = clause.clauseTitlePunjabi ?? '';
+        final desc = clause.dangerSimpleLanguageEnglish ?? '';
+        final descPa = clause.dangerSimpleLanguagePunjabi ?? '';
 
         buffer.writeln('$emoji $title');
         if (titlePa.isNotEmpty) buffer.writeln('   $titlePa');

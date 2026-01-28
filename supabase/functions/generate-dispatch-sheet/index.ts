@@ -196,21 +196,75 @@ Deno.serve(async (req) => withLogging(req, async (req) => {
 
         let orgLogoUrl = '';
         if (orgData?.logo_image_link) {
-            if (orgData.logo_image_link.startsWith('http')) {
-                orgLogoUrl = orgData.logo_image_link;
-            } else {
-                try {
-                    const { data: signedLogo, error } = await supabase.storage.from('assets').createSignedUrl(orgData.logo_image_link, 3600);
-                    if (signedLogo) {
-                        orgLogoUrl = signedLogo.signedUrl;
-                    } else if (error) {
-                        // Fallback to public
-                        const { data: signedLogoPublic, error: errorPublic } = await supabase.storage.from('public').createSignedUrl(orgData.logo_image_link, 3600);
-                        if (signedLogoPublic) orgLogoUrl = signedLogoPublic.signedUrl;
+            try {
+                // If it's already a full generic URL (e.g. from a public bucket or external), try to fetch it
+                // If it's a storage path, download it from Supabase storage
+
+                let blob: Blob | null = null;
+                let mimeType = 'image/png'; // Default
+
+                if (orgData.logo_image_link.startsWith('http')) {
+                    // External URL
+                    // Already a full URL
+                    console.log("Using external logo URL:", orgData.logo_image_link);
+                    orgLogoUrl = orgData.logo_image_link;
+                } else {
+                    console.log("Processing Logo Path:", orgData.logo_image_link);
+
+                    // 1. Generate & Log Public URL (for debugging/fallback)
+                    const { data: publicData } = supabase
+                        .storage
+                        .from('assets')
+                        .getPublicUrl(orgData.logo_image_link);
+
+                    if (publicData?.publicUrl) {
+                        console.log("Public URL Candidate (Assets):", publicData.publicUrl);
                     }
-                } catch (e) {
-                    console.log("Logo signing exception:", e);
+
+                    // 2. Try Signed URL (Primary for Private Buckets)
+                    const { data: signedData, error: signedError } = await supabase
+                        .storage
+                        .from('assets')
+                        .createSignedUrl(orgData.logo_image_link, 3600); // 1 hour expiration
+
+                    if (signedData?.signedUrl) {
+                        console.log("Generated Signed URL (Assets):", signedData.signedUrl);
+                        orgLogoUrl = signedData.signedUrl;
+                    } else {
+                        console.error("Signed URL generation failed:", signedError);
+                        // Fallback to Public URL if Signed fails
+                        if (publicData?.publicUrl) {
+                            console.log("Falling back to Public URL.");
+                            orgLogoUrl = publicData.publicUrl;
+                        }
+                    }
+
+                    // FIX for Local Docker Dev: Replace 'kong' with 'host.docker.internal'
+                    if (orgLogoUrl && (orgLogoUrl.includes('kong') || orgLogoUrl.includes('supabase_kong'))) {
+                        console.log("Replacing internal 'kong' host with 'host.docker.internal:54321'");
+                        // Replace protocol://hostname:port with http://host.docker.internal:54321
+                        orgLogoUrl = orgLogoUrl.replace(/https?:\/\/[^\/]+/, 'http://host.docker.internal:54321');
+                    }
                 }
+
+                if (blob) {
+                    const buffer = await blob.arrayBuffer();
+                    const bytes = new Uint8Array(buffer);
+                    let binary = '';
+                    const len = bytes.byteLength;
+                    for (let i = 0; i < len; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    const base64 = btoa(binary);
+
+                    orgLogoUrl = `data:${mimeType};base64,${base64}`;
+                    console.log("Logo converted to base64 successfully.");
+                } else {
+                    console.log("Failed to download logo logic.");
+                }
+
+            } catch (e) {
+                console.log("Logo processing exception:", e);
             }
         }
 
@@ -218,9 +272,7 @@ Deno.serve(async (req) => withLogging(req, async (req) => {
         if (!orgLogoUrl) {
             orgLogoUrl = "https://placehold.co/200x60?text=Logo+Missing";
         }
-        if (orgLogoUrl && orgLogoUrl.includes('http://kong:8000')) {
-            orgLogoUrl = orgLogoUrl.replace('http://kong:8000', 'http://127.0.0.1:54321');
-        }
+        // No need to replace kong host for base64 or placeholder
 
         const formatAddress = (addr: any) => {
             if (!addr) return '';

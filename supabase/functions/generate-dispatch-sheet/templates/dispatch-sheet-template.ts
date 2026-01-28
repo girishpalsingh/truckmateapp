@@ -309,7 +309,7 @@ export const dispatchSheetTemplate = `
     <!-- Header -->
     <div class="header-grid">
         <div class="brand-section">
-            <img src="{{orgLogoUrl}}" class="org-logo" alt="Logo" />
+            <img src="{{{orgLogoUrl}}}" class="org-logo" alt="Logo" />
             <div>
                 <div class="org-name">{{orgName}}</div>
                 <div class="org-details">{{{orgAddress}}}</div>

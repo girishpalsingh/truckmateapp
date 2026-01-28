@@ -13,11 +13,11 @@ class RiskClause {
   final String? clauseType;
   final TrafficLight trafficLight;
 
-  final String? titleEn;
-  final String? titlePunjabi;
+  final String? clauseTitle;
+  final String? clauseTitlePunjabi;
 
-  final String? explanationEn;
-  final String? explanationPunjabi;
+  final String? dangerSimpleLanguageEnglish;
+  final String? dangerSimpleLanguagePunjabi;
 
   final String? originalText;
   final ClauseNotification? notification;
@@ -30,10 +30,10 @@ class RiskClause {
     this.rcId,
     this.clauseType,
     required this.trafficLight,
-    this.titleEn,
-    this.titlePunjabi,
-    this.explanationEn,
-    this.explanationPunjabi,
+    this.clauseTitle,
+    this.clauseTitlePunjabi,
+    this.dangerSimpleLanguageEnglish,
+    this.dangerSimpleLanguagePunjabi,
     this.originalText,
     this.notification,
     this.createdAt,
@@ -49,11 +49,11 @@ class RiskClause {
       clauseType: json['clause_type'],
       trafficLight: _parseTrafficLight(json['traffic_light']),
 
-      titleEn: json['title_en'],
-      titlePunjabi: json['title_punjabi'],
+      clauseTitle: json['clause_title'],
+      clauseTitlePunjabi: json['clause_title_punjabi'],
 
-      explanationEn: json['explanation_en'],
-      explanationPunjabi: json['explanation_punjabi'],
+      dangerSimpleLanguageEnglish: json['danger_simple_language_english'],
+      dangerSimpleLanguagePunjabi: json['danger_simple_language_punjabi'],
 
       originalText: json['original_text'],
 
@@ -92,10 +92,10 @@ class RiskClause {
       'rc_id': rcId,
       'clause_type': clauseType,
       'traffic_light': trafficLight.name.toUpperCase(),
-      'title_en': titleEn,
-      'title_punjabi': titlePunjabi,
-      'explanation_en': explanationEn,
-      'explanation_punjabi': explanationPunjabi,
+      'clause_title': clauseTitle,
+      'clause_title_punjabi': clauseTitlePunjabi,
+      'danger_simple_language_english': dangerSimpleLanguageEnglish,
+      'danger_simple_language_punjabi': dangerSimpleLanguagePunjabi,
       'original_text': originalText,
       'created_at': createdAt?.toIso8601String(),
     };

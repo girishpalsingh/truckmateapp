@@ -39,11 +39,11 @@ export async function processRateCon(
 
     console.log("Inserting Rate Confirmation Data...");
 
-    // Using .select() to get both 'rc_id' (Serial) and 'id' (UUID)
+    // Using .select() to get 'id' (UUID) and other fields
     const { data: rateCon, error: rateConError } = await supabase
         .from('rate_confirmations')
         .insert(rateConData)
-        .select('rc_id, id, load_id, broker_name, risk_score')
+        .select('id, load_id, broker_name, risk_score')
         .single();
 
     if (rateConError) {
@@ -51,13 +51,12 @@ export async function processRateCon(
         throw new Error(`Failed to insert rate confirmation: ${rateConError.message}`);
     }
 
-    console.log(`Rate Confirmation inserted. ID: ${rateCon.id}, RC_ID: ${rateCon.rc_id}`);
+    console.log(`Rate Confirmation inserted. ID: ${rateCon.id}`);
 
-    const rcId = rateCon.rc_id; // Serial Key
     const rateConfirmationUUID = rateCon.id; // UUID Key
 
     // 2. Insert RC References
-    const refNumbersData = mapRcReferences(rcId, rateConfirmationUUID, extractedData);
+    const refNumbersData = mapRcReferences(rateConfirmationUUID, extractedData);
     if (refNumbersData.length > 0) {
         console.log(`Inserting ${refNumbersData.length} reference numbers...`);
         const { error: refError } = await supabase
@@ -68,7 +67,7 @@ export async function processRateCon(
     }
 
     // 3. Insert RC Stops & Commodities
-    const stopsWithCommodities = mapRcStops(rcId, rateConfirmationUUID, extractedData);
+    const stopsWithCommodities = mapRcStops(rateConfirmationUUID, extractedData);
     if (stopsWithCommodities.length > 0) {
         console.log(`Inserting ${stopsWithCommodities.length} stops...`);
 
@@ -103,7 +102,7 @@ export async function processRateCon(
     }
 
     // 4. Insert RC Charges
-    const chargesData = mapRcCharges(rcId, rateConfirmationUUID, extractedData);
+    const chargesData = mapRcCharges(rateConfirmationUUID, extractedData);
     if (chargesData.length > 0) {
         console.log(`Inserting ${chargesData.length} charges...`);
         const { error: chargesError } = await supabase
@@ -114,7 +113,7 @@ export async function processRateCon(
     }
 
     // 5. Insert RC Risk Clauses and their Notifications
-    const clausesToInsert = mapRcRiskClauses(rcId, rateConfirmationUUID, extractedData);
+    const clausesToInsert = mapRcRiskClauses(rateConfirmationUUID, extractedData);
     if (clausesToInsert.length > 0) {
         console.log(`Inserting ${clausesToInsert.length} risk clauses...`);
 
@@ -150,10 +149,10 @@ export async function processRateCon(
     }
 
     // 6. Insert RC Dispatch Instructions (Single Row usually)
-    const dispatchInstructions = mapRcDispatchInstructions(rcId, rateConfirmationUUID, extractedData);
+    const dispatchInstructions = mapRcDispatchInstructions(rateConfirmationUUID, extractedData);
     // Check if it has any data to insert (at least one field non-empty)
     const hasData = Object.values(dispatchInstructions).some(val =>
-        val !== rcId && val !== rateConfirmationUUID && val !== null && (Array.isArray(val) ? val.length > 0 : true)
+        val !== rateConfirmationUUID && val !== null && (Array.isArray(val) ? val.length > 0 : true)
     );
 
     if (hasData) {

@@ -50,13 +50,15 @@ export function mapRateConData(documentId: string, extractedData: any, organizat
 /**
  * Maps reference numbers.
  */
-export function mapRcReferences(rcId: number | null, rateConfirmationUUID: string | null, extractedData: any) {
+/**
+ * Maps reference numbers.
+ */
+export function mapRcReferences(rateConfirmationUUID: string | null, extractedData: any) {
     if (!extractedData.reference_numbers || !Array.isArray(extractedData.reference_numbers)) {
         return [];
     }
 
     return extractedData.reference_numbers.map((ref: any) => ({
-        rc_id: rcId,
         rate_confirmation_id: rateConfirmationUUID,
         ref_type: ref.type || null,
         ref_value: ref.value || null,
@@ -66,13 +68,12 @@ export function mapRcReferences(rcId: number | null, rateConfirmationUUID: strin
 /**
  * Maps charges.
  */
-export function mapRcCharges(rcId: number | null, rateConfirmationUUID: string | null, extractedData: any) {
+export function mapRcCharges(rateConfirmationUUID: string | null, extractedData: any) {
     if (!extractedData.charges || !Array.isArray(extractedData.charges)) {
         return [];
     }
 
     return extractedData.charges.map((charge: any) => ({
-        rc_id: rcId,
         rate_confirmation_id: rateConfirmationUUID,
         description: charge.description || null,
         amount: parseNumeric(charge.amount),
@@ -83,14 +84,13 @@ export function mapRcCharges(rcId: number | null, rateConfirmationUUID: string |
  * Maps stops and their commodities.
  * Returns array of objects, each containing stop data and an array of commodities.
  */
-export function mapRcStops(rcId: number | null, rateConfirmationUUID: string | null, extractedData: any) {
+export function mapRcStops(rateConfirmationUUID: string | null, extractedData: any) {
     if (!extractedData.stops || !Array.isArray(extractedData.stops)) {
         return [];
     }
 
     return extractedData.stops.map((stop: any, index: number) => {
         const stopData = {
-            rc_id: rcId,
             rate_confirmation_id: rateConfirmationUUID,
             stop_sequence: index + 1,
             stop_type: stop.stop_type === 'Pickup' ? 'Pickup' : 'Delivery',
@@ -125,7 +125,7 @@ export function mapRcStops(rcId: number | null, rateConfirmationUUID: string | n
 /**
  * Maps risk clauses.
  */
-export function mapRcRiskClauses(rcId: number | null, rateConfirmationUUID: string | null, extractedData: any) {
+export function mapRcRiskClauses(rateConfirmationUUID: string | null, extractedData: any) {
     const clausesFound = extractedData.risk_analysis?.clauses_found || [];
 
     if (!Array.isArray(clausesFound)) {
@@ -134,17 +134,15 @@ export function mapRcRiskClauses(rcId: number | null, rateConfirmationUUID: stri
 
     return clausesFound.map((clause: any) => {
         const clauseData = {
-            rc_id: rcId,
             rate_confirmation_id: rateConfirmationUUID,
             traffic_light: clause.traffic_light || 'YELLOW',
             clause_type: clause.clause_type || 'Other',
 
-            title_en: clause.clause_title || null,
-            title_punjabi: clause.clause_title_punjabi || null,
+            clause_title: clause.clause_title || null,
+            clause_title_punjabi: clause.clause_title_punjabi || null,
 
-            explanation_en: clause.danger_simple_language || null,
-            explanation_punjabi: clause.danger_simple_punjabi || null, // Not in prompt schema? Check prompt.
-            // Prompt schema: danger_simple_punjabi. DB schema: explanation_punjabi.
+            danger_simple_language_english: clause.danger_simple_language_english || null,
+            danger_simple_language_punjabi: clause.danger_simple_language_punjabi || null,
 
             original_text: clause.original_text || null,
         };
@@ -171,7 +169,7 @@ export function mapRcRiskClauses(rcId: number | null, rateConfirmationUUID: stri
 /**
  * Maps Dispatch Instructions.
  */
-export function mapRcDispatchInstructions(rcId: number | null, rateConfirmationUUID: string | null, extractedData: any) {
+export function mapRcDispatchInstructions(rateConfirmationUUID: string | null, extractedData: any) {
     const dd = extractedData.driver_dispatch_view || {};
 
     // DB Schema has 1 row per RC for this table, with JSONB arrays.
@@ -187,7 +185,6 @@ export function mapRcDispatchInstructions(rcId: number | null, rateConfirmationU
     const action_items = dd.driver_dispatch_instructions || [];
 
     return {
-        rc_id: rcId,
         rate_confirmation_id: rateConfirmationUUID,
         pickup_summary: dd.pickup_instructions || null,
         delivery_summary: dd.delivery_instructions || null,
