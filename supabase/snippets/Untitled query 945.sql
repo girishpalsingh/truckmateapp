@@ -10,6 +10,7 @@ RENAME COLUMN title_en TO clause_title;
 ALTER TABLE public.rc_risk_clauses
 RENAME COLUMN title_punjabi TO clause_title_punjabi;
 
+
 ALTER TABLE public.rc_risk_clauses
 RENAME COLUMN explanation_en TO danger_simple_language_english;
 
