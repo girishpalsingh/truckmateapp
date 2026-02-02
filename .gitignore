@@ -40,7 +40,7 @@ dist/
 .env.test.local
 .env.production.local
 config/app_config.json
-supabase/config.toml
+#supabase/config.toml
 
 # IDE
 .idea/

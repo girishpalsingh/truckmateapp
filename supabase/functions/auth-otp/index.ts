@@ -73,10 +73,11 @@ async function handleSendOtp(
       { status: 403, headers: corsHeaders }
     );
   }
+  console.log("Going to sign with OTP");
 
   // Send OTP
   const { error } = await supabase.auth.signInWithOtp({
-    phone: phoneNumber,
+    phone: profile.phone_number || phoneNumber, // Use DB phone potentially with + prefix
     options: {
       shouldCreateUser: false,
     }
@@ -228,7 +229,17 @@ serve(async (req) => withLogging(req, async (req) => {
   }
 
   try {
-    const { action, phone_number, otp } = await req.json();
+    let { action, phone_number, otp } = await req.json();
+
+    // Normalize phone number: Ensure it starts with + if purely numeric
+    if (phone_number && typeof phone_number === 'string') {
+      const trimmed = phone_number.trim();
+      if (!trimmed.startsWith('+') && /^\d+$/.test(trimmed)) {
+        phone_number = `+${trimmed}`;
+      } else {
+        phone_number = trimmed;
+      }
+    }
 
     // Instantiate Supabase Admin Client for this request
     const supabaseAdmin = createClient(

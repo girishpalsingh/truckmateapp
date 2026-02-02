@@ -1,225 +1,123 @@
-#!/usr/bin/env node
-
-/**
- * Script to create a new Supabase user with phone number authentication
- * 
- * Usage: node create-phone-user.js <phone_number> [password]
- * 
- * Examples:
- *   node create-phone-user.js +15551234567
- *   node create-phone-user.js +15551234567 mySecurePassword123
- */
-
-const fs = require('fs');
-const path = require('path');
+const { exec } = require('child_process');
 const { createClient } = require('@supabase/supabase-js');
 
-// Read Supabase credentials from config
-const configPath = path.join(__dirname, '..', 'config', 'app_config.json');
+// 1. Get Phone Number from Command Line
+const phoneNumber = process.argv[2];
 
-function loadConfig() {
-    try {
-        const configData = fs.readFileSync(configPath, 'utf8');
-        return JSON.parse(configData);
-    } catch (error) {
-        console.error(`Error reading config file at ${configPath}:`, error.message);
-        process.exit(1);
-    }
+if (!phoneNumber) {
+    console.error('❌ Error: Please provide a phone number.');
+    console.error('Usage: node create-phone-user.js <PHONE_NUMBER> [ROLE] [FULL_NAME]');
+    process.exit(1);
 }
 
-function generateRandomPassword(length = 16) {
-    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
-    let password = '';
-    for (let i = 0; i < length; i++) {
-        password += charset.charAt(Math.floor(Math.random() * charset.length));
+const role = process.argv[3] || 'driver';
+const fullName = process.argv[4] || 'Test Phone User';
+
+console.log('🔄 Fetching credentials from "supabase status"...');
+
+// 2. Execute 'supabase status' to get credentials
+exec('supabase status', async (error, stdout, stderr) => {
+    if (error) {
+        console.error(`❌ Error running supabase status: ${error.message}`);
+        console.error('Make sure Supabase is running (supabase start).');
+        return;
     }
-    return password;
-}
 
-function getServerInfo(url) {
     try {
-        const urlObj = new URL(url);
-        const hostname = urlObj.hostname;
+        // 3. Parse the output
+        const apiUrlMatch = stdout.match(/Project URL\s+│\s+(http:\/\/[0-9.]+:[0-9]+)/);
+        const secretKeyMatch = stdout.match(/Secret\s+│\s+([^\s│]+)/);
 
-        // Detect server type
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-            return { type: 'LOCAL', display: `🏠 Local Development (${url})` };
-        } else if (hostname.includes('supabase.co')) {
-            const projectRef = hostname.split('.')[0];
-            return { type: 'PRODUCTION', display: `☁️  Supabase Cloud (Project: ${projectRef})` };
-        } else if (hostname.includes('supabase.in') || hostname.includes('supabase.net')) {
-            return { type: 'SELF_HOSTED', display: `🖥️  Self-Hosted Supabase (${hostname})` };
-        } else {
-            return { type: 'UNKNOWN', display: `🌐 Custom Server (${hostname})` };
+        if (!apiUrlMatch || !secretKeyMatch) {
+            throw new Error('Could not parse "Project URL" or "Secret" from supabase status output.');
         }
-    } catch (error) {
-        return { type: 'ERROR', display: `❓ Unknown (${url})` };
-    }
-}
 
-async function createPhoneUser(phoneNumber, password) {
-    // Load configuration
-    const config = loadConfig();
+        const supabaseUrl = apiUrlMatch[1].trim();
+        const serviceRoleKey = secretKeyMatch[1].trim();
 
-    const supabaseUrl = config.supabase.project_url;
-    const supabaseServiceKey = config.supabase.service_role_key;
+        console.log(`✅ Credentials found.`);
+        console.log(`   URL: ${supabaseUrl}`);
 
-    // Display server connection info
-    const serverInfo = getServerInfo(supabaseUrl);
-    console.log('\n' + '═'.repeat(60));
-    console.log('🔌 CONNECTING TO SUPABASE');
-    console.log('═'.repeat(60));
-    console.log(`   Server: ${serverInfo.display}`);
-    console.log(`   URL:    ${supabaseUrl}`);
-    console.log('═'.repeat(60));
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-        console.error('Error: Supabase URL or service role key not found in config');
-        process.exit(1);
-    }
-
-    // Create Supabase client with service role key for admin operations
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-        auth: {
-            autoRefreshToken: false,
-            persistSession: false
-        }
-    });
-
-    console.log(`\n📱 Creating user with phone number: ${phoneNumber}`);
-    console.log(`🔑 Using password: ${password}\n`);
-
-    try {
-        // Use admin API to create user (bypasses email/phone confirmation)
-        const { data, error } = await supabase.auth.admin.createUser({
-            phone: phoneNumber,
-            password: password,
-            phone_confirm: true, // Auto-confirm the phone number
-            user_metadata: {
-                created_via: 'create-phone-user-script',
-                created_at: new Date().toISOString()
+        // 4. Initialize Supabase Admin Client
+        const supabase = createClient(supabaseUrl, serviceRoleKey, {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false
             }
         });
 
-        if (error) {
-            console.error('❌ Error creating user:', error.message);
+        // 5. Get a random existing organization
+        const { data: orgs, error: orgError } = await supabase
+            .from('organizations')
+            .select('id')
+            .limit(100);
 
-            // Check if user already exists
-            if (error.message.includes('already registered') || error.message.includes('already exists')) {
-                console.log('\n💡 Tip: User may already exist. Try a different phone number.');
+        if (orgError) throw new Error(`Failed to fetch organizations: ${orgError.message}`);
+        if (!orgs || orgs.length === 0) throw new Error('No organizations found. Please run seed_orgs_users.js first.');
+
+        const randomOrg = orgs[Math.floor(Math.random() * orgs.length)];
+        console.log(`🏢 Selected Organization: ${randomOrg.id}`);
+
+        console.log(`\nCreating user: ${phoneNumber}...`);
+
+        // 6. Create the User via Admin API
+        let userId;
+        const { data, error: createError } = await supabase.auth.admin.createUser({
+            phone: phoneNumber,
+            phone_confirmed_at: new Date().toISOString(),
+            user_metadata: {
+                full_name: fullName,
+                phone_number: phoneNumber
             }
+        });
 
-            process.exit(1);
-        }
+        if (createError) {
+            // If user already exists, we try to fetch them to update profile
+            if (createError.message.includes('already registered') || createError.status === 422) {
+                console.log('⚠️ User already exists. Attempting to find user...');
+                const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
+                if (listError) throw listError;
 
-        console.log('✅ User created successfully!\n');
-        console.log('User Details:');
-        console.log('─'.repeat(50));
-        console.log(`  ID:          ${data.user.id}`);
-        console.log(`  Phone:       ${data.user.phone}`);
-        console.log(`  Password:    ${password}`);
-        console.log(`  Created At:  ${data.user.created_at}`);
-        console.log(`  Confirmed:   ${data.user.phone_confirmed_at ? 'Yes' : 'No'}`);
-        console.log('─'.repeat(50));
-
-        // Verify user by retrieving from database
-        console.log('\n🔍 Verifying user in database...');
-        const { data: verifyData, error: verifyError } = await supabase.auth.admin.getUserById(data.user.id);
-
-        if (verifyError) {
-            console.error('⚠️  Warning: Could not verify user:', verifyError.message);
-        } else if (verifyData && verifyData.user) {
-            console.log('✅ User verified! Found in auth.users:');
-            console.log('─'.repeat(50));
-            console.log(`  ID:              ${verifyData.user.id}`);
-            console.log(`  Phone:           ${verifyData.user.phone}`);
-            console.log(`  Role:            ${verifyData.user.role || 'N/A'}`);
-            console.log(`  Email Confirmed: ${verifyData.user.email_confirmed_at ? 'Yes' : 'No'}`);
-            console.log(`  Phone Confirmed: ${verifyData.user.phone_confirmed_at ? 'Yes' : 'No'}`);
-            console.log(`  Last Sign In:    ${verifyData.user.last_sign_in_at || 'Never'}`);
-            console.log('─'.repeat(50));
-
-            // Also check the public profile
-            console.log('\n🔍 Verifying profile in public.profiles...');
-            const { data: profileData, error: profileError } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', data.user.id)
-                .single();
-
-            if (profileError) {
-                console.error('❌ Error: Profile not found in public.profiles! Trigger may have failed.');
-                console.error('   Details:', profileError.message);
+                const existingUser = users.find(u => u.phone === phoneNumber);
+                if (!existingUser) {
+                    throw new Error('User reported existing but not found in list.');
+                }
+                userId = existingUser.id;
+                console.log(`✅ Found existing user ID: ${userId}`);
             } else {
-                console.log('✅ Profile verified! Found in public.profiles:');
-                console.log('─'.repeat(50));
-                console.log(`  ID:           ${profileData.id}`);
-                console.log(`  Full Name:    ${profileData.full_name}`);
-                console.log(`  Phone:        ${profileData.phone_number}`);
-                console.log(`  Role:         ${profileData.role}`);
-                console.log(`  Is Active:    ${profileData.is_active}`);
-                console.log('─'.repeat(50));
+                throw createError;
             }
-
         } else {
-            console.error('⚠️  Warning: User not found in database after creation');
+            userId = data.user.id;
+            console.log('✅ User created successfully!');
+            console.log('   User ID:', userId);
         }
 
-        console.log('\n📝 Note: Save the password securely. It cannot be retrieved later.');
+        // 7. Insert/Upsert into Profiles
+        // We use upsert to ensure we update existing profiles too
+        const { error: profileError } = await supabase
+            .from('profiles')
+            .upsert({
+                id: userId,
+                organization_id: randomOrg.id,
+                role: role,
+                full_name: fullName,
+                phone_number: phoneNumber,
+                is_active: true,
+                updated_at: new Date().toISOString()
+            });
 
-        return data.user;
-    } catch (error) {
-        console.error('❌ Unexpected error:', error.message);
+        if (profileError) {
+            throw new Error(`Failed to create/update profile: ${profileError.message}`);
+        }
+
+        console.log('✅ Profile created/updated successfully!');
+        console.log(`   Role: ${role}`);
+        console.log(`   Organization: ${randomOrg.id}`);
+        console.log(`   Full Name: ${fullName}`);
+
+    } catch (err) {
+        console.error('❌ Script failed:', err.message);
         process.exit(1);
     }
-}
-
-// Main execution
-async function main() {
-    const args = process.argv.slice(2);
-
-    if (args.length === 0) {
-        console.log(`
-Usage: node create-phone-user.js <phone_number> [password]
-
-Arguments:
-  phone_number  Phone number in E.164 format (e.g., +15551234567)
-  password      Optional password (auto-generated if not provided)
-
-Examples:
-  node create-phone-user.js +15551234567
-  node create-phone-user.js +15551234567 mySecurePassword123
-  node create-phone-user.js "+1 555 123 4567"
-    `);
-        process.exit(0);
-    }
-
-    // Parse phone number (remove spaces and ensure it starts with +)
-    let phoneNumber = args[0].replace(/\s/g, '');
-    if (!phoneNumber.startsWith('+')) {
-        phoneNumber = '+' + phoneNumber;
-    }
-
-    // Validate phone number format (basic validation)
-    const phoneRegex = /^\+[1-9]\d{6,14}$/;
-    if (!phoneRegex.test(phoneNumber)) {
-        console.error(`
-❌ Invalid phone number format: ${phoneNumber}
-
-Phone numbers should be in E.164 format:
-  - Start with + followed by country code
-  - Contain only digits after the +
-  - Be between 7 and 15 digits long
-
-Examples: +15551234567, +919876543210
-    `);
-        process.exit(1);
-    }
-
-    // Use provided password or generate one
-    const password = args[1] || generateRandomPassword();
-
-    await createPhoneUser(phoneNumber, password);
-}
-
-main();
+});

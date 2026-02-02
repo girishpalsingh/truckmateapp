@@ -59,7 +59,7 @@ class AppConfig {
   factory AppConfig._default() {
     return AppConfig(
       supabase: SupabaseConfig(
-        projectUrl: 'http://127.0.0.1:54321',
+        projectUrl: 'http://192.168.1.146:54321',
         anonKey: 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH',
       ),
       powersync: PowerSyncConfig(instanceUrl: '', apiKey: ''),

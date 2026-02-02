@@ -16,6 +16,8 @@ import '../widgets/notification_toast.dart';
 import '../../../l10n/app_localizations.dart';
 import 'rate_con_list_screen.dart';
 import 'load_list_screen.dart';
+import '../../services/detention_service.dart';
+import '../../data/models/detention_record.dart';
 
 /// Main Dashboard Screen - Action-oriented for drivers
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -28,8 +30,10 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   final TripService _tripService = TripService();
   final LoadService _loadService = LoadService();
+  final DetentionService _detentionService = DetentionService();
   Trip? _activeTrip;
   List<Load> _recentLoads = [];
+  List<DetentionRecord> _activeDetentions = [];
   TripProfitability? _profitability;
   String? _userRole;
   bool _isLoading = true;
@@ -56,6 +60,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
       final loads = await _loadService.getLoads(); // Returns List<Load>
 
+      final orgId = await UserUtils.getUserOrganization() ?? '';
+
+      final activeDetentions = orgId.isNotEmpty
+          ? await _detentionService.getAllActiveDetentions(orgId)
+          : <DetentionRecord>[];
+
       TripProfitability? profit;
       if (trip != null) {
         profit = await _tripService.calculateProfitability(trip.id);
@@ -64,6 +74,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         setState(() {
           _activeTrip = trip;
           _recentLoads = loads;
+          _activeDetentions = activeDetentions;
+          _profitability = profit;
           _profitability = profit;
           _userRole = role;
           _isLoading = false;
@@ -213,6 +225,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Active Detention Alert
+              if (_activeDetentions.isNotEmpty) ...[
+                ..._activeDetentions
+                    .map((d) => _buildActiveDetentionCard(d))
+                    .toList(),
+                const SizedBox(height: 16),
+              ],
+
               // Content based on Role
               if (_userRole == 'driver') ...[
                 if (_isLoading)
@@ -712,6 +732,54 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         ),
         const SizedBox(height: 16),
       ],
+    );
+  }
+
+  Widget _buildActiveDetentionCard(DetentionRecord record) {
+    return Card(
+      color: Colors.red.shade50,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.red.shade200),
+      ),
+      child: ListTile(
+        leading: const Icon(Icons.timer, color: Colors.red, size: 32),
+        title: const Text('DETENTION ACTIVE',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+        subtitle: Text(
+            'Started: ${record.startTime.toLocal().toString().split('.')[0]}'),
+        trailing: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red, foregroundColor: Colors.white),
+          onPressed: () {
+            // Navigate to Load Details
+            // We need the Load object. We only have ID.
+            // We can fetch it or just push LoadDetailsScreen with minimal data (not ideal if it expects full map).
+            // Ideally LoadDetailsScreen fetches data if partial?
+            // Current LoadDetailsScreen expects `final Map<String, dynamic> load;`
+            // We should probably fetch it or modify LoadDetails to support ID-only load.
+            // For now, let's try to find it in _recentLoads
+            try {
+              final load =
+                  _recentLoads.firstWhere((l) => l.id == record.loadId);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => LoadDetailsScreen(load: load.toJson())),
+              ).then((_) => _loadData());
+            } catch (e) {
+              // Not in recent? Fetch it?
+              // Just show snackbar for now or simple "Go to Loads"
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content:
+                        Text('Go to Loads list to manage this detention.')),
+              );
+            }
+          },
+          child: const Text('VIEW'),
+        ),
+      ),
     );
   }
 

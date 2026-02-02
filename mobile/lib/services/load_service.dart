@@ -101,43 +101,14 @@ class LoadService {
     required String truckId,
     String? trailerId,
   }) async {
-    // 1. Check for existing active assignment
-    final existing = await _supabase
-        .from('dispatch_assignments')
-        .select()
-        .eq('load_id', loadId)
-        .eq('status', 'ACTIVE')
-        .maybeSingle();
-
-    if (existing != null) {
-      // Mark as cancelled or simply update it?
-      // Let's update the existing one to keep it simple and avoid constraint issues if we wanted to replace it.
-      await _supabase.from('dispatch_assignments').update({
-        'driver_id': driverId,
-        'truck_id': truckId,
-        'trailer_id': trailerId,
-        'assigned_at': DateTime.now().toIso8601String(),
-      }).eq('id', existing['id']);
-    } else {
-      // Insert new
-      await _supabase.from('dispatch_assignments').insert({
-        'load_id': loadId,
-        'organization_id': organizationId,
-        'driver_id': driverId,
-        'truck_id': truckId,
-        'trailer_id': trailerId,
-        'status': 'ACTIVE',
-      });
-    }
-
-    // Also update Load status to 'assigned' if it's currently 'created'
-    // AND sync the resource IDs to the loads table for RLS/Caching
-    await _supabase.from('loads').update({
-      'status': 'assigned', // Workflow: moves from created -> assigned
-      'driver_id': driverId,
-      'truck_id': truckId,
-      'trailer_id': trailerId,
-    }).eq('id', loadId);
+    // Use RPC to safely handle assignment with permission checks (Uploader or Manager)
+    await _supabase.rpc('assign_load_to_driver', params: {
+      'p_load_id': loadId,
+      'p_organization_id': organizationId,
+      'p_driver_id': driverId,
+      'p_truck_id': truckId,
+      'p_trailer_id': trailerId,
+    });
   }
 
   // Generate Dispatch Sheet

@@ -440,6 +440,66 @@ $$;
 ALTER FUNCTION "public"."approve_rate_con_transaction"("p_rate_con_id" "uuid", "p_edits" "jsonb", "p_user_id" "uuid") OWNER TO "supabase_admin";
 
 
+CREATE OR REPLACE FUNCTION "public"."assign_load_to_driver"("p_load_id" "uuid", "p_organization_id" "uuid", "p_driver_id" "uuid", "p_truck_id" "uuid", "p_trailer_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+DECLARE
+    v_uploader_id UUID;
+    v_user_role public.user_role;
+    v_active_rc_id INT;
+BEGIN
+    -- Get current user role
+    SELECT role INTO v_user_role FROM profiles WHERE id = auth.uid();
+    
+    -- Check if user is allowed (Manager, Dispatcher, OrgAdmin OR Uploader)
+    IF v_user_role IN ('owner', 'manager', 'dispatcher', 'orgadmin') THEN
+        -- Allow
+    ELSE
+        -- Helper logic for Driver Uploader
+        SELECT active_rate_con_id INTO v_active_rc_id FROM loads WHERE id = p_load_id;
+        
+        -- If no active RC, deny
+        IF v_active_rc_id IS NULL THEN
+             RAISE EXCEPTION 'Access Denied: No active rate confirmation found.';
+        END IF;
+
+        SELECT created_by INTO v_uploader_id 
+        FROM rate_confirmations 
+        WHERE rc_id = v_active_rc_id;
+        
+        IF v_uploader_id IS DISTINCT FROM auth.uid() THEN
+            RAISE EXCEPTION 'Access Denied: You are not authorized to assign this load. Only the uploader or a manager can assign it.';
+        END IF;
+    END IF;
+
+    -- Perform logic: Cancel old active assignments
+    UPDATE dispatch_assignments 
+    SET status = 'CANCELLED' 
+    WHERE load_id = p_load_id AND status = 'ACTIVE';
+
+    -- Insert new assignment
+    INSERT INTO dispatch_assignments (
+        load_id, organization_id, driver_id, truck_id, trailer_id, status
+    ) VALUES (
+        p_load_id, p_organization_id, p_driver_id, p_truck_id, p_trailer_id, 'ACTIVE'
+    );
+    
+    -- Update Load status and FKs
+    UPDATE loads 
+    SET status = 'assigned',
+        driver_id = p_driver_id,
+        truck_id = p_truck_id,
+        trailer_id = p_trailer_id
+    WHERE id = p_load_id;
+    
+END;
+$$;
+
+
+ALTER FUNCTION "public"."assign_load_to_driver"("p_load_id" "uuid", "p_organization_id" "uuid", "p_driver_id" "uuid", "p_truck_id" "uuid", "p_trailer_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."calculate_trip_profit"("trip_uuid" "uuid") RETURNS TABLE("revenue" numeric, "expenses" numeric, "detention_revenue" numeric, "net_profit" numeric, "profit_margin" numeric)
     LANGUAGE "plpgsql"
     AS $$
@@ -640,6 +700,38 @@ COMMENT ON FUNCTION "public"."log_document_event"("p_document_id" "uuid", "p_org
 
 
 
+CREATE OR REPLACE FUNCTION "public"."rls_auto_enable"() RETURNS "event_trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'pg_catalog'
+    AS $$
+DECLARE
+  cmd record;
+BEGIN
+  FOR cmd IN
+    SELECT *
+    FROM pg_event_trigger_ddl_commands()
+    WHERE command_tag IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+      AND object_type IN ('table','partitioned table')
+  LOOP
+     IF cmd.schema_name IS NOT NULL AND cmd.schema_name IN ('public') AND cmd.schema_name NOT IN ('pg_catalog','information_schema') AND cmd.schema_name NOT LIKE 'pg_toast%' AND cmd.schema_name NOT LIKE 'pg_temp%' THEN
+      BEGIN
+        EXECUTE format('alter table if exists %s enable row level security', cmd.object_identity);
+        RAISE LOG 'rls_auto_enable: enabled RLS on %', cmd.object_identity;
+      EXCEPTION
+        WHEN OTHERS THEN
+          RAISE LOG 'rls_auto_enable: failed to enable RLS on %', cmd.object_identity;
+      END;
+     ELSE
+        RAISE LOG 'rls_auto_enable: skip % (either system schema or not in enforced list: %.)', cmd.object_identity, cmd.schema_name;
+     END IF;
+  END LOOP;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."rls_auto_enable"() OWNER TO "supabase_admin";
+
+
 CREATE OR REPLACE FUNCTION "public"."search_documents"("org_id" "uuid", "query_embedding" "public"."vector", "match_threshold" double precision DEFAULT 0.78, "match_count" integer DEFAULT 10) RETURNS TABLE("document_id" "uuid", "content" "text", "similarity" double precision, "metadata" "jsonb")
     LANGUAGE "plpgsql"
     AS $$
@@ -690,6 +782,14 @@ $$;
 
 
 ALTER FUNCTION "public"."set_document_defaults"() OWNER TO "supabase_admin";
+
+
+CREATE OR REPLACE FUNCTION "public"."test_func"() RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$ BEGIN END; $$;
+
+
+ALTER FUNCTION "public"."test_func"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."trigger_log_document_delete"() RETURNS "trigger"
@@ -803,7 +903,7 @@ CREATE TABLE IF NOT EXISTS "public"."bill_of_ladings" (
     "special_notes" "text",
     "created_at" timestamp with time zone DEFAULT "now"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
-    CONSTRAINT "bill_of_ladings_payment_terms_check" CHECK ((("payment_terms")::"text" = ANY ((ARRAY['PREPAID'::character varying, 'COLLECT'::character varying, 'THIRD_PARTY'::character varying])::"text"[])))
+    CONSTRAINT "bill_of_ladings_payment_terms_check" CHECK ((("payment_terms")::"text" = ANY (ARRAY[('PREPAID'::character varying)::"text", ('COLLECT'::character varying)::"text", ('THIRD_PARTY'::character varying)::"text"])))
 );
 
 
@@ -834,7 +934,7 @@ CREATE TABLE IF NOT EXISTS "public"."bol_references" (
     "ref_type" character varying(50),
     "ref_value" character varying(100) NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"(),
-    CONSTRAINT "bol_references_ref_type_check" CHECK ((("ref_type")::"text" = ANY ((ARRAY['PO'::character varying, 'SEAL'::character varying, 'CUSTOMER_REF'::character varying, 'SID'::character varying, 'OTHER'::character varying])::"text"[])))
+    CONSTRAINT "bol_references_ref_type_check" CHECK ((("ref_type")::"text" = ANY (ARRAY[('PO'::character varying)::"text", ('SEAL'::character varying)::"text", ('CUSTOMER_REF'::character varying)::"text", ('SID'::character varying)::"text", ('OTHER'::character varying)::"text"])))
 );
 
 
@@ -852,7 +952,7 @@ CREATE TABLE IF NOT EXISTS "public"."bol_validations" (
     "validation_status" character varying(20),
     "failure_reasons" "text"[],
     "validated_at" timestamp with time zone DEFAULT "now"(),
-    CONSTRAINT "bol_validations_validation_status_check" CHECK ((("validation_status")::"text" = ANY ((ARRAY['PASSED'::character varying, 'WARNING'::character varying, 'FAILED'::character varying])::"text"[])))
+    CONSTRAINT "bol_validations_validation_status_check" CHECK ((("validation_status")::"text" = ANY (ARRAY[('PASSED'::character varying)::"text", ('WARNING'::character varying)::"text", ('FAILED'::character varying)::"text"])))
 );
 
 
@@ -1217,7 +1317,7 @@ CREATE TABLE IF NOT EXISTS "public"."rate_confirmations" (
     "document_id" "uuid",
     "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
-    CONSTRAINT "rate_confirmations_risk_score_check" CHECK ((("risk_score")::"text" = ANY ((ARRAY['RED'::character varying, 'YELLOW'::character varying, 'GREEN'::character varying, 'UNKNOWN'::character varying])::"text"[])))
+    CONSTRAINT "rate_confirmations_risk_score_check" CHECK ((("risk_score")::"text" = ANY (ARRAY[('RED'::character varying)::"text", ('YELLOW'::character varying)::"text", ('GREEN'::character varying)::"text", ('UNKNOWN'::character varying)::"text"])))
 );
 
 
@@ -1339,7 +1439,7 @@ CREATE TABLE IF NOT EXISTS "public"."rc_notifications" (
     "start_event" character varying(50),
     "deadline_date" "date",
     "relative_offset_minutes" integer,
-    CONSTRAINT "rc_notifications_trigger_type_check" CHECK ((("trigger_type")::"text" = ANY ((ARRAY['Absolute'::character varying, 'Relative'::character varying, 'Conditional'::character varying])::"text"[])))
+    CONSTRAINT "rc_notifications_trigger_type_check" CHECK ((("trigger_type")::"text" = ANY (ARRAY[('Absolute'::character varying)::"text", ('Relative'::character varying)::"text", ('Conditional'::character varying)::"text"])))
 );
 
 
@@ -1399,7 +1499,7 @@ CREATE TABLE IF NOT EXISTS "public"."rc_risk_clauses" (
     "danger_simple_language_english" "text",
     "danger_simple_language_punjabi" "text",
     "original_text" "text",
-    CONSTRAINT "rc_risk_clauses_traffic_light_check" CHECK ((("traffic_light")::"text" = ANY ((ARRAY['RED'::character varying, 'YELLOW'::character varying, 'GREEN'::character varying])::"text"[])))
+    CONSTRAINT "rc_risk_clauses_traffic_light_check" CHECK ((("traffic_light")::"text" = ANY (ARRAY[('RED'::character varying)::"text", ('YELLOW'::character varying)::"text", ('GREEN'::character varying)::"text"])))
 );
 
 
@@ -1438,7 +1538,7 @@ CREATE TABLE IF NOT EXISTS "public"."rc_stops" (
     "status" "public"."stop_status_enum" DEFAULT 'PENDING'::"public"."stop_status_enum",
     "actual_arrival" timestamp with time zone,
     "actual_departure" timestamp with time zone,
-    CONSTRAINT "rc_stops_stop_type_check" CHECK ((("stop_type")::"text" = ANY ((ARRAY['Pickup'::character varying, 'Delivery'::character varying])::"text"[])))
+    CONSTRAINT "rc_stops_stop_type_check" CHECK ((("stop_type")::"text" = ANY (ARRAY[('Pickup'::character varying)::"text", ('Delivery'::character varying)::"text"])))
 );
 
 
@@ -2366,6 +2466,16 @@ ALTER TABLE ONLY "public"."trucks"
 
 
 CREATE POLICY "Drivers can insert their own locations" ON "public"."driver_locations" FOR INSERT TO "authenticated" WITH CHECK ((("driver_id" = "auth"."uid"()) AND ("organization_id" = "public"."get_user_organization_id"())));
+
+
+
+CREATE POLICY "Drivers can manage dispatch assignments if uploader" ON "public"."dispatch_assignments" TO "authenticated" USING (("auth"."uid"() IN ( SELECT "rc"."created_by"
+   FROM ("public"."loads" "l"
+     JOIN "public"."rate_confirmations" "rc" ON (("rc"."rc_id" = "l"."active_rate_con_id")))
+  WHERE ("l"."id" = "dispatch_assignments"."load_id")))) WITH CHECK (("auth"."uid"() IN ( SELECT "rc"."created_by"
+   FROM ("public"."loads" "l"
+     JOIN "public"."rate_confirmations" "rc" ON (("rc"."rc_id" = "l"."active_rate_con_id")))
+  WHERE ("l"."id" = "dispatch_assignments"."load_id"))));
 
 
 
@@ -5468,6 +5578,12 @@ GRANT ALL ON FUNCTION "public"."approve_rate_con_transaction"("p_rate_con_id" "u
 
 
 
+GRANT ALL ON FUNCTION "public"."assign_load_to_driver"("p_load_id" "uuid", "p_organization_id" "uuid", "p_driver_id" "uuid", "p_truck_id" "uuid", "p_trailer_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."assign_load_to_driver"("p_load_id" "uuid", "p_organization_id" "uuid", "p_driver_id" "uuid", "p_truck_id" "uuid", "p_trailer_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."assign_load_to_driver"("p_load_id" "uuid", "p_organization_id" "uuid", "p_driver_id" "uuid", "p_truck_id" "uuid", "p_trailer_id" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "postgres";
 GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "anon";
 GRANT ALL ON FUNCTION "public"."binary_quantize"("public"."halfvec") TO "authenticated";
@@ -5929,6 +6045,13 @@ GRANT ALL ON FUNCTION "public"."log_document_event"("p_document_id" "uuid", "p_o
 
 
 
+GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "postgres";
+GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "anon";
+GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rls_auto_enable"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."search_documents"("org_id" "uuid", "query_embedding" "public"."vector", "match_threshold" double precision, "match_count" integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."search_documents"("org_id" "uuid", "query_embedding" "public"."vector", "match_threshold" double precision, "match_count" integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."search_documents"("org_id" "uuid", "query_embedding" "public"."vector", "match_threshold" double precision, "match_count" integer) TO "service_role";
@@ -6093,6 +6216,12 @@ GRANT ALL ON FUNCTION "public"."subvector"("public"."vector", integer, integer) 
 GRANT ALL ON FUNCTION "public"."subvector"("public"."vector", integer, integer) TO "anon";
 GRANT ALL ON FUNCTION "public"."subvector"("public"."vector", integer, integer) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."subvector"("public"."vector", integer, integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."test_func"() TO "anon";
+GRANT ALL ON FUNCTION "public"."test_func"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."test_func"() TO "service_role";
 
 
 
@@ -6697,6 +6826,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
+
+
+
+
 
 
 

@@ -99,23 +99,17 @@ class AuthService {
       final sessionData = data['session'];
 
       // --- CRITICAL STEP: ESTABLISH AUTH CONTEXT ---
-      if (sessionData != null && sessionData['access_token'] != null) {
-        // Use setSession with the access_token.
-        // Note: For long-term persistence and auto-refresh, the Supabase SDK
-        // will use the refresh_token if it's included in the session recovery.
-        // In supabase_flutter 2.x, passing the access_token to setSession is common,
-        // but restoring from a full session object or refresh token is better.
-        await _client.auth.setSession(sessionData['access_token']);
-
-        // If you want robust auto-refreshing from the refresh token immediately:
-        if (sessionData['refresh_token'] != null) {
-          try {
-            await _client.auth.recoverSession(sessionData['refresh_token']);
-          } catch (e) {
-            AppLogger.w(
-                'AuthService: Non-critical error during session recovery: $e');
-          }
-        }
+      if (sessionData != null && sessionData['refresh_token'] != null) {
+        // Correctly use setSession with the refresh_token.
+        // In Supabase Flutter v2, setSession takes a refresh token string.
+        await _client.auth.setSession(sessionData['refresh_token']);
+      } else if (sessionData != null && sessionData['access_token'] != null) {
+        // Fallback if we only have an access token (less ideal, but creating a session manually isn't directly exposed in same way)
+        // However, verifyOTP usually returns a session.
+        AppLogger.w(
+            "AuthService: Received access_token but no refresh_token. Session might not auto-refresh.");
+        // We can't easily "set" a session with just access token in v2 without a refresh token dance or creating a Session object manually if SDK allows.
+        // For now, valid OTP flows *should* return a refresh token.
       } else {
         throw 'No session data returned from server';
       }

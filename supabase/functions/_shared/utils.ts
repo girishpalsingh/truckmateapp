@@ -1,12 +1,36 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 import { authorizeUser } from "./auth.ts";
 
 export const getUserByPhone = async (supabase: SupabaseClient, phone: string) => {
-    const { data: profile, error: profileError } = await supabase
+    // Normalize phone: Ensure it has a + if it looks like a number and doesn't have one
+    let searchPhone = phone.trim();
+    if (!searchPhone.startsWith('+') && /^\d+$/.test(searchPhone)) {
+        searchPhone = `+${searchPhone}`;
+    }
+
+    console.log(`Looking up profile for phone: ${phone} (normalized: ${searchPhone})`);
+
+    // Try finding the profile with the normalized phone number
+    let { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("*")
-        .eq("phone_number", phone)
+        .eq("phone_number", searchPhone)
         .maybeSingle();
+
+    // If not found and input was different, try original input just in case
+    if (!profile && searchPhone !== phone) {
+        console.log(`Profile not found with ${searchPhone}, trying original: ${phone}`);
+        const { data: retryProfile, error: retryError } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("phone_number", phone)
+            .maybeSingle();
+
+        if (retryProfile) {
+            profile = retryProfile;
+            profileError = retryError;
+        }
+    }
 
     if (profileError) {
         console.log("Profile error:", profileError);
@@ -20,6 +44,7 @@ export const getUserByPhone = async (supabase: SupabaseClient, phone: string) =>
 
     console.log("Profile found:", profile.id);
 
+    // Using admin.getUserById is cleaner than listing users
     const { data: { user }, error } = await supabase.auth.admin.getUserById(profile.id);
 
     if (error) {
@@ -30,7 +55,8 @@ export const getUserByPhone = async (supabase: SupabaseClient, phone: string) =>
             aud: 'authenticated',
             app_metadata: { provider: 'phone' },
             user_metadata: {},
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            phone: profile.phone_number
         };
         return { user: mockUser as any, profile: profile, error: null };
     }

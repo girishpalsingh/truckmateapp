@@ -17,6 +17,11 @@ import '../../services/trip_service.dart';
 import 'package:geolocator/geolocator.dart'; // Add geolocator
 import 'package:intl/intl.dart'; // Add time formatting
 import '../../l10n/app_localizations.dart'; // Correct localization import
+import '../../services/detention_service.dart';
+import '../../data/models/detention_record.dart';
+import 'detention_entry_screen.dart';
+import 'detention_review_screen.dart';
+import 'dart:async'; // for Timer
 
 class LoadDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> load;
@@ -41,6 +46,10 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
   String? _dispatchDocumentId; // New state variable
   String? _activeTripId; // active trip id
   final TripService _tripService = TripService();
+  final DetentionService _detentionService = DetentionService();
+  DetentionRecord? _activeDetention;
+  Timer? _detentionTimer;
+  Duration _detentionDuration = Duration.zero;
 
   Map<String, dynamic>? _getRateCon() {
     final rc = widget.load['rate_confirmations'];
@@ -52,12 +61,90 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
     return null;
   }
 
+  UserProfile? _currentProfile;
+
+  bool _canAssign() {
+    if (_currentProfile == null) return false;
+    // Managers/Admins/Dispatchers can always assign
+    if (['owner', 'manager', 'dispatcher', 'orgadmin']
+        .contains(_currentProfile!.role)) {
+      return true;
+    }
+    // Drivers can only assign if they uploaded the Rate Con
+    if (_currentProfile!.role == 'driver') {
+      final rc = _getRateCon();
+      if (rc != null && rc['created_by'] == _currentProfile!.id) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
     _parseStops();
     _fetchAssignment();
     _checkActiveTrip();
+    _checkActiveDetention();
+    _fetchProfile();
+  }
+
+  Future<void> _fetchProfile() async {
+    try {
+      final profile = await _profileService.getCurrentProfile();
+      if (mounted) {
+        setState(() {
+          _currentProfile = profile;
+        });
+      }
+    } catch (e) {
+      AppLogger.e('Error fetching profile', e);
+    }
+  }
+
+  @override
+  void dispose() {
+    _detentionTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkActiveDetention() async {
+    try {
+      final detention =
+          await _detentionService.getActiveDetention(widget.load['id']);
+      if (mounted) {
+        setState(() {
+          _activeDetention = detention;
+          if (detention != null) {
+            _startLocalTimer();
+          } else {
+            _detentionTimer?.cancel();
+            _detentionDuration = Duration.zero;
+          }
+        });
+      }
+    } catch (e) {
+      AppLogger.w('Failed to check active detention', e);
+    }
+  }
+
+  void _startLocalTimer() {
+    _detentionTimer?.cancel();
+    // Update immediately
+    _updateDetentionDuration();
+    // Then periodically
+    _detentionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) _updateDetentionDuration();
+    });
+  }
+
+  void _updateDetentionDuration() {
+    if (_activeDetention != null) {
+      setState(() {
+        _detentionDuration = _activeDetention!.duration;
+      });
+    }
   }
 
   Future<void> _checkActiveTrip() async {
@@ -518,6 +605,114 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
     }
   }
 
+  Future<void> _startDetention() async {
+    if (_currentStop == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wait for a stop to be active')),
+      );
+      return;
+    }
+
+    // Navigate to Entry Screen
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DetentionEntryScreen(
+          loadId: widget.load['id'],
+          organizationId: widget.load['organization_id'],
+          stopId: _currentStop!['id'] ?? _currentStop!['stop_id'], // fallback
+          facilityAddress: _currentStop!['facility_address'] ??
+              _currentStop!['address'] ??
+              'Unknown',
+        ),
+      ),
+    );
+
+    if (result == true) {
+      _checkActiveDetention();
+    }
+  }
+
+  Future<void> _stopDetention() async {
+    if (_activeDetention == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      // Get location for stop event
+      final pos = await Geolocator.getCurrentPosition();
+
+      // Stop Timer logic
+      await _detentionService.stopDetention(
+        recordId: _activeDetention!.id,
+        lat: pos.latitude,
+        lng: pos.longitude,
+      );
+
+      // Calculate Invoice Draft
+      final draft =
+          await _detentionService.calculateDraftInvoice(_activeDetention!.id);
+
+      setState(() => _isLoading = false);
+
+      // Confirm Creation
+      if (!mounted) return;
+
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Detention Stopped'),
+          content: const Text('Do you want to create a detention invoice now?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('No, Later'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Yes, Create Invoice'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true && mounted) {
+        // Go to Review
+        final pdfUrl = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DetentionReviewScreen(
+              detentionRecordId: _activeDetention!.id,
+              initialData: draft,
+            ),
+          ),
+        );
+
+        if (pdfUrl != null && mounted) {
+          // Show Open PDF Option or Success
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invoice Sent! PDF Generated.')),
+          );
+          // Launch PDF? User said "Once PDF is generated we ask user can we email..."
+          // Email logic handling might be in background or next step.
+          // For now, let's open it.
+          if (await canLaunchUrl(Uri.parse(pdfUrl))) {
+            launchUrl(Uri.parse(pdfUrl), mode: LaunchMode.externalApplication);
+          }
+        }
+      }
+
+      await _checkActiveDetention(); // Refresh state (it should be inactive now)
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        AppLogger.e('Error stopping detention', e);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
   void _startTrip() {
     if (_assignment == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -627,11 +822,14 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                     _assignment!['driver']['full_name'] ?? 'Unknown Driver'),
                 subtitle: Text(
                     'Truck: ${_assignment!['truck']['truck_number'] ?? "N/A"}'),
-                trailing: IconButton(
-                    icon: const Icon(Icons.edit), onPressed: _showAssignDialog),
+                trailing: _canAssign()
+                    ? IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: _showAssignDialog)
+                    : null,
               ),
             )
-          else
+          else if (_canAssign())
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -659,10 +857,43 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
 
           const SizedBox(height: 24),
 
+          // Detention Section (Active)
+          if (_activeDetention != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 24),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                border: Border.all(color: Colors.red),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  const Text('DETENTION ACTIVE',
+                      style: TextStyle(
+                          color: Colors.red, fontWeight: FontWeight.bold)),
+                  Text(
+                    '${_detentionDuration.inHours}h ${(_detentionDuration.inMinutes % 60).toString().padLeft(2, '0')}m ${(_detentionDuration.inSeconds % 60).toString().padLeft(2, '0')}s',
+                    style: const TextStyle(
+                        fontSize: 32, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.stop_circle),
+                    label: const Text('Stop Detention & Invoice'),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white),
+                    onPressed: _isLoading ? null : _stopDetention,
+                  )
+                ],
+              ),
+            ),
+
           // Actions
           if (_assignment != null) ...[
             if (_isTripActiveForLoad && _currentStop != null)
-              if (_currentStop!['status'] == 'ARRIVED')
+              if (_currentStop!['status'] == 'ARRIVED') ...[
                 ElevatedButton(
                   onPressed: _showDepartureDialog,
                   style: ElevatedButton.styleFrom(
@@ -680,8 +911,29 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                         TextStyle(fontSize: 12, color: Colors.white70),
                     alignment: CrossAxisAlignment.center,
                   ),
-                )
-              else
+                ),
+                if (_activeDetention == null) ...[
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: _isLoading ? null : _startDetention,
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16)),
+                    child: const DualLanguageText(
+                      primaryText: 'Start Detention',
+                      subtitleText: 'ਡਿਟੈਂਸ਼ਨ ਸ਼ੁਰੂ ਕਰੋ',
+                      primaryStyle: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white),
+                      subtitleStyle:
+                          TextStyle(fontSize: 12, color: Colors.white70),
+                      alignment: CrossAxisAlignment.center,
+                    ),
+                  ),
+                ],
+              ] else
                 ElevatedButton(
                   onPressed: _handleArrivalRequest,
                   style: ElevatedButton.styleFrom(

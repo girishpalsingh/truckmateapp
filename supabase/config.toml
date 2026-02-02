@@ -1,0 +1,69 @@
+[functions.auth-otp]
+verify_jwt = false
+
+[functions.process-document]
+verify_jwt = false
+
+[functions.generate-invoice]
+verify_jwt = false
+[functions.semantic-search]
+verify_jwt = false
+
+[functions.send-email]
+verify_jwt = false
+
+[functions.process-rate-con-response]
+verify_jwt = false
+
+[functions.admin-organizations]
+verify_jwt = false
+
+[functions.admin-users]
+verify_jwt = false
+
+[functions.create-detention-invoice]
+verify_jwt = false
+
+[functions.generate-dispatch-sheet]
+verify_jwt = false
+
+[functions.generate-pdf]
+verify_jwt = false
+
+[functions.mock_llm_response]
+verify_jwt = false
+
+[functions.record-location]
+verify_jwt = false
+
+
+[auth]
+enabled = true
+jwt_expiry = 604800
+enable_refresh_token_rotation = true
+enable_signup = true
+enable_anonymous_sign_ins = false
+
+
+[auth.sms]
+enable_signup = true
+enable_confirmations = true
+template = "Your code is {{ .Code }}"
+
+
+##############################################
+#   Twilio SMS Provider
+##############################################
+[auth.sms.twilio]
+enabled = true
+
+# Read from your .env file — recommended
+account_sid = "AC58a75779208719925658587f31606f0e"
+auth_token  = "9976364f3771e40160755f4823186d2c"
+
+# Twilio phone number purchased from the console
+message_service_sid= "message_service_sid"
+
+[auth.sms.test_otp]
+"+11234567890" = "123456"
+"15550000001"="123456"
