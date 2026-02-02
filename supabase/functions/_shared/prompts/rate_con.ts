@@ -111,7 +111,7 @@ JSON Schema:
             "properties": {
               "clause_type": { "type": "string" },
               "traffic_light": { "type": "string", "enum": ["RED", "YELLOW", "GREEN"] },
-              "clause_title": { "type": "string" },
+              "clause_title_english": { "type": "string" },
               "clause_title_punjabi": { "type": "string" },
               "danger_simple_language_english": { "type": "string" },
               "danger_simple_language_punjabi": { "type": "string" },

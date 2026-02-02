@@ -179,12 +179,11 @@ class DocumentSyncService {
     _log('═══════════════════════════════════════════════════════════');
 
     try {
+      // Only sync documents with pending status
+      // Failed documents are deleted immediately, so no retry logic needed
       final pendingDocs = await getPendingDocuments();
       final toSync = pendingDocs
-          .where((d) =>
-              d.syncStatus == DocumentSyncStatus.pending ||
-              (d.syncStatus == DocumentSyncStatus.failed &&
-                  d.retryCount < maxRetries))
+          .where((d) => d.syncStatus == DocumentSyncStatus.pending)
           .toList();
 
       _log('📤 Found ${toSync.length} documents to sync');
@@ -299,13 +298,19 @@ class DocumentSyncService {
     } catch (e, stack) {
       AppLogger.e('Failed to sync document ${doc.id}', e, stack);
 
+      // Create failed status to notify listeners before deletion
       final failedDoc = doc.copyWith(
         syncStatus: DocumentSyncStatus.failed,
         errorMessage: e.toString(),
         retryCount: doc.retryCount + 1,
       );
-      await _updatePendingDocument(failedDoc);
       _statusController.add(failedDoc);
+
+      // When online and sync fails, delete the failed document and move to next
+      // This prevents one bad document from blocking the entire queue
+      _log('🗑️ Deleting failed document and moving to next: ${doc.id}');
+      _log('   Error: $e');
+      await deleteSingleDocument(doc.id);
     }
   }
 

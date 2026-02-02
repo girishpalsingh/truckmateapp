@@ -614,13 +614,17 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
     }
 
     // Navigate to Entry Screen
+    // Convert stopId to String since database may return int
+    final stopIdValue = _currentStop!['id'] ?? _currentStop!['stop_id'];
+    final stopIdStr = stopIdValue?.toString();
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => DetentionEntryScreen(
           loadId: widget.load['id'],
           organizationId: widget.load['organization_id'],
-          stopId: _currentStop!['id'] ?? _currentStop!['stop_id'], // fallback
+          stopId: stopIdStr,
           facilityAddress: _currentStop!['facility_address'] ??
               _currentStop!['address'] ??
               'Unknown',

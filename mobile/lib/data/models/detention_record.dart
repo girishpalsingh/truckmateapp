@@ -27,10 +27,10 @@ class DetentionRecord {
 
   factory DetentionRecord.fromJson(Map<String, dynamic> json) {
     return DetentionRecord(
-      id: json['id'],
-      organizationId: json['organization_id'],
-      loadId: json['load_id'],
-      stopId: json['stop_id'],
+      id: json['id'].toString(),
+      organizationId: json['organization_id'].toString(),
+      loadId: json['load_id'].toString(),
+      stopId: json['stop_id'].toString(),
       startTime: DateTime.parse(json['start_time']),
       startLocation: json['start_location_json'] != null
           ? Map<String, dynamic>.from(json[

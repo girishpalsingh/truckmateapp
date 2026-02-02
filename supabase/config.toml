@@ -37,6 +37,8 @@ verify_jwt = false
 verify_jwt = false
 
 
+
+
 [auth]
 enabled = true
 jwt_expiry = 604800

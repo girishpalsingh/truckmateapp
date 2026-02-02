@@ -15,40 +15,50 @@ class DetentionService {
       : _client = client ?? Supabase.instance.client,
         _documentService = documentService ?? DocumentService();
 
-  /// Start detention: Upload photo, track location, create record
+  /// Start detention: Upload photo (optional), track location, create record
   Future<DetentionRecord> startDetention({
     required String organizationId,
     required String loadId,
     required String stopId,
     required double lat,
     required double lng,
-    required Uint8List photoBytes,
+    Uint8List? photoBytes, // Optional for simulator testing
   }) async {
     try {
-      // 1. Upload Photo
-      final photoPath = await _documentService.uploadDocument(
-        organizationId: organizationId,
-        tripId:
-            loadId, // Using loadId as folder grouping for simplicity if tripId unknown
-        documentType: 'detention_evidence',
-        imageBytes: photoBytes,
-        fileName:
-            'detention_start_${DateTime.now().millisecondsSinceEpoch}.jpg',
-      );
+      String? photoPath;
+
+      // 1. Upload Photo only if provided
+      if (photoBytes != null) {
+        photoPath = await _documentService.uploadDocument(
+          organizationId: organizationId,
+          tripId:
+              loadId, // Using loadId as folder grouping for simplicity if tripId unknown
+          documentType: 'detention_evidence',
+          imageBytes: photoBytes,
+          fileName:
+              'detention_start_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+      }
 
       // 2. Insert Record
+      final insertData = {
+        'organization_id': organizationId,
+        'load_id': loadId,
+        'stop_id': stopId,
+        'start_time': DateTime.now().toIso8601String(),
+        'start_location_lat': lat,
+        'start_location_lng': lng,
+      };
+
+      // Only add photo fields if photo was uploaded
+      if (photoPath != null) {
+        insertData['evidence_photo_url'] = photoPath;
+        insertData['evidence_photo_time'] = DateTime.now().toIso8601String();
+      }
+
       final response = await _client
           .from(DetentionQueries.recordsTable)
-          .insert({
-            'organization_id': organizationId,
-            'load_id': loadId,
-            'stop_id': stopId,
-            'start_time': DateTime.now().toIso8601String(),
-            'start_location_lat': lat,
-            'start_location_lng': lng,
-            'evidence_photo_url': photoPath,
-            'evidence_photo_time': DateTime.now().toIso8601String(),
-          })
+          .insert(insertData)
           .select()
           .single();
 
@@ -59,7 +69,40 @@ class DetentionService {
     }
   }
 
-  /// Stop detention: Update record with end time/location
+  /// Delete a detention record
+  Future<void> deleteDetention(String recordId) async {
+    try {
+      await _client
+          .from(DetentionQueries.recordsTable)
+          .delete()
+          .eq('id', recordId);
+      AppLogger.i('DetentionService: Deleted detention record $recordId');
+    } catch (e, stack) {
+      AppLogger.e('DetentionService: Error deleting detention', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Get existing detention for a specific stop (including completed ones)
+  Future<DetentionRecord?> getExistingDetentionForStop(String stopId) async {
+    try {
+      final response = await _client
+          .from(DetentionQueries.recordsTable)
+          .select()
+          .eq('stop_id', stopId)
+          .order('start_time', ascending: false)
+          .limit(1);
+
+      if (response.isEmpty) return null;
+      return DetentionRecord.fromJson(response.first);
+    } catch (e, stack) {
+      AppLogger.e(
+          'DetentionService: Error getting detention for stop', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Get active detention for a load (if any)
   Future<DetentionRecord> stopDetention({
     required String recordId,
     required double lat,
@@ -87,15 +130,18 @@ class DetentionService {
   /// Get active detention for a load (if any)
   Future<DetentionRecord?> getActiveDetention(String loadId) async {
     try {
+      // Get the most recent active detention (no end_time)
+      // Using limit(1) to handle case where multiple records exist
       final response = await _client
           .from(DetentionQueries.recordsTable)
           .select()
           .eq('load_id', loadId)
           .isFilter('end_time', null) // Check if end_time is null
-          .maybeSingle();
+          .order('start_time', ascending: false)
+          .limit(1);
 
-      if (response == null) return null;
-      return DetentionRecord.fromJson(response);
+      if (response.isEmpty) return null;
+      return DetentionRecord.fromJson(response.first);
     } catch (e, stack) {
       AppLogger.e('DetentionService: Error getting active detention', e, stack);
       rethrow;
@@ -174,9 +220,14 @@ class DetentionService {
   }
 
   /// Create Final Invoice via Edge Function
+  ///
+  /// [detentionRecordId] - The ID of the detention record
+  /// [invoiceDetails] - Map containing invoice details (rate, hours, etc.)
+  /// [sendEmail] - If true, sends the invoice via email to the broker
   Future<DetentionInvoice> createInvoice({
     required String detentionRecordId,
     required Map<String, dynamic> invoiceDetails,
+    bool sendEmail = false,
   }) async {
     try {
       final response = await _client.functions.invoke(
@@ -184,6 +235,7 @@ class DetentionService {
         body: {
           'detention_record_id': detentionRecordId,
           'invoice_details': invoiceDetails,
+          'send_email': sendEmail,
         },
       );
 
@@ -192,8 +244,7 @@ class DetentionService {
       }
 
       // Edge function returns { success: true, invoice_id: ..., url: ... }
-      // We might need to fetch the full record again or construct it.
-      // Let's fetch the newly created record
+      // Fetch the newly created record
       final invoiceId = response.data['invoice_id'];
       final invRes = await _client
           .from(DetentionQueries.invoicesTable)
