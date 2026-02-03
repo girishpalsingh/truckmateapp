@@ -3,9 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_provider.dart';
 import '../../core/utils/user_utils.dart';
 import '../themes/app_theme.dart';
-import '../../services/trip_service.dart';
 import '../../services/load_service.dart';
-import '../../data/models/trip.dart';
 import '../../data/models/load.dart';
 import 'rate_con_analysis_screen.dart';
 import 'load_details_screen.dart';
@@ -14,10 +12,12 @@ import 'pdf_viewer_screen.dart';
 import '../providers/notification_provider.dart';
 import '../widgets/notification_toast.dart';
 import '../../../l10n/app_localizations.dart';
-import 'rate_con_list_screen.dart';
+
 import 'load_list_screen.dart';
 import '../../services/detention_service.dart';
 import '../../data/models/detention_record.dart';
+import '../widgets/journey_timeline.dart';
+import '../../data/models/stop.dart';
 
 /// Main Dashboard Screen - Action-oriented for drivers
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -28,14 +28,10 @@ class DashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
-  final TripService _tripService = TripService();
   final LoadService _loadService = LoadService();
   final DetentionService _detentionService = DetentionService();
-  Trip? _activeTrip;
   List<Load> _recentLoads = [];
   List<DetentionRecord> _activeDetentions = [];
-  TripProfitability? _profitability;
-  String? _userRole;
   bool _isLoading = true;
 
   @override
@@ -50,14 +46,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Future<void> _loadData() async {
     try {
-      final role = await UserUtils.getUserRole();
-
-      // If driver, load active trip. If owner, maybe load fleet stats (for now just active trip is fine as placeholder or skip).
-      Trip? trip;
-      if (role == 'driver') {
-        trip = await _tripService.getActiveTrip();
-      }
-
       final loads = await _loadService.getLoads(); // Returns List<Load>
 
       final orgId = await UserUtils.getUserOrganization() ?? '';
@@ -66,18 +54,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ? await _detentionService.getAllActiveDetentions(orgId)
           : <DetentionRecord>[];
 
-      TripProfitability? profit;
-      if (trip != null) {
-        profit = await _tripService.calculateProfitability(trip.id);
-      }
       if (mounted) {
         setState(() {
-          _activeTrip = trip;
           _recentLoads = loads;
           _activeDetentions = activeDetentions;
-          _profitability = profit;
-          _profitability = profit;
-          _userRole = role;
           _isLoading = false;
         });
       }
@@ -217,161 +197,77 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Active Detention Alert
-              if (_activeDetentions.isNotEmpty) ...[
-                ..._activeDetentions
-                    .map((d) => _buildActiveDetentionCard(d))
-                    .toList(),
-                const SizedBox(height: 16),
-              ],
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _loadData,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Active Detention Alert
+                    if (_activeDetentions.isNotEmpty) ...[
+                      ..._activeDetentions
+                          .map((d) => _buildActiveDetentionCard(d))
+                          .toList(),
+                      const SizedBox(height: 16),
+                    ],
 
-              // Content based on Role
-              if (_userRole == 'driver') ...[
-                if (_isLoading)
-                  const Center(child: CircularProgressIndicator())
-                else if (_activeTrip != null)
-                  _buildActiveTripCard()
-                else
-                  _buildNoTripCard(),
-              ] else if (_userRole == 'owner' ||
-                  _userRole == 'manager' ||
-                  _userRole == 'dispatcher') ...[
-                // Owner/Manager specific widgets - currently hidden to avoid blank space
-                // _buildOwnerDashboardWidgets(),
-              ],
+                    // Latest Load Journey Card
+                    if (_recentLoads.isNotEmpty)
+                      _buildJourneyCard(_recentLoads.first)
+                    else
+                      Card(
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(24.0),
+                          child: Center(
+                            child: Column(
+                              children: [
+                                Icon(Icons.local_shipping_outlined,
+                                    size: 48, color: Colors.grey.shade400),
+                                const SizedBox(height: 16),
+                                Text(
+                                  AppLocalizations.of(context)!.noActiveTrip,
+                                  style: TextStyle(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 16),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
 
-              // Recent Loads List - Hide for drivers as they only focus on active trip
-              if (_userRole != 'driver' &&
-                  _recentLoads.isNotEmpty &&
-                  (_activeTrip == null ||
-                      _activeTrip!.status == 'completed' ||
-                      _activeTrip!.status == 'deadhead')) ...[
-                const SizedBox(height: 16),
-                _buildRecentLoadsList(),
-              ],
+                    const SizedBox(height: 24),
 
-              const SizedBox(height: 24),
+                    // Quick Actions
+                    DualLanguageText(
+                      primaryText: AppLocalizations.of(context)!.quickActions,
+                      subtitleText:
+                          AppLocalizations.of(context)!.quickActionsSubtitle,
+                      primaryStyle: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
 
-              // Quick Actions
-              DualLanguageText(
-                primaryText: AppLocalizations.of(context)!.quickActions,
-                subtitleText:
-                    AppLocalizations.of(context)!.quickActionsSubtitle,
-                primaryStyle: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                    // Action Buttons Grid
+                    _buildQuickActionsGrid(),
+
+                    const SizedBox(height: 24),
+
+                    // Voice Command Button
+                    _buildVoiceCommandButton(),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-
-              // Action Buttons Grid
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildActionButton(
-                      icon: Icons.local_shipping,
-                      label: 'All Loads',
-                      subtitle: 'ਸਾਰੇ ਲੋਡ ਵੇਖੋ', // View all loads in Punjabi
-                      color: AppTheme.primaryColor,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => const LoadListScreen()),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildActionButton(
-                      icon: Icons.document_scanner,
-                      label: AppLocalizations.of(context)!.scanDoc,
-                      subtitle: AppLocalizations.of(context)!.scanDocSubtitle,
-                      color: AppTheme.primaryColor,
-                      onTap: () => Navigator.pushNamed(context, '/scan'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildActionButton(
-                      icon: Icons.local_gas_station,
-                      label: AppLocalizations.of(context)!.logFuel,
-                      subtitle: AppLocalizations.of(context)!.logFuelSubtitle,
-                      color: AppTheme.accentColor,
-                      onTap: () => Navigator.pushNamed(
-                        context,
-                        '/expense',
-                        arguments: 'fuel',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildActionButton(
-                      icon: Icons.receipt_long,
-                      label: AppLocalizations.of(context)!.addExpense,
-                      subtitle:
-                          AppLocalizations.of(context)!.addExpenseSubtitle,
-                      color: AppTheme.warningColor,
-                      onTap: () => Navigator.pushNamed(context, '/expense'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // New Tiles: Rate Cons & Loads
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildActionButton(
-                      icon: Icons.assignment,
-                      label: 'Rate Cons',
-                      subtitle: 'View Rate Confirmations',
-                      color: Colors.blueAccent,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => const RateConListScreen()),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildActionButton(
-                      icon: Icons.local_shipping,
-                      label: 'Loads',
-                      subtitle: 'Manage Loads',
-                      color: Colors.teal,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => const LoadListScreen()),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // Voice Command Button
-              _buildVoiceCommandButton(),
-            ],
-          ),
-        ),
-      ),
+            ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 0,
         onTap: (index) {
@@ -407,378 +303,115 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  Widget _buildActiveTripCard() {
+  Widget _buildJourneyCard(Load load) {
+    // If we have an active trip, use its details if simpler, or just use load data
+    // Load has rateConfirmations which has stops
+    List<Stop> stops = [];
+    String origin = 'Unknown';
+    String destination = 'Unknown';
+
+    if (load.rateConfirmations != null && load.rateConfirmations!.isNotEmpty) {
+      final rc = load.rateConfirmations!.first;
+      if (rc['rc_stops'] != null) {
+        stops = (rc['rc_stops'] as List).map((s) => Stop.fromJson(s)).toList();
+        if (stops.isNotEmpty) {
+          origin = stops.first.address?.split(',').firstOrNull ?? 'Start';
+          destination = stops.last.address?.split(',').firstOrNull ?? 'End';
+        }
+      }
+    }
+
     return Card(
       elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              AppTheme.primaryColor,
-              AppTheme.primaryColor.withOpacity(0.8),
-            ],
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                DualLanguageText(
-                  primaryText: AppLocalizations.of(context)!.activeTrip,
-                  subtitleText:
-                      AppLocalizations.of(context)!.activeTripSubtitle,
-                  primaryStyle: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'LATEST LOAD #${load.brokerLoadId ?? load.id.substring(0, 4)}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      Text(
+                        load.brokerName ?? 'Unknown Broker',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
-                  subtitleStyle:
-                      const TextStyle(color: Colors.white70, fontSize: 10),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    _activeTrip!.status.toUpperCase(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // Route
-            Row(
-              children: [
-                const Icon(Icons.location_on, color: Colors.white70, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '${_activeTrip!.originAddress ?? AppLocalizations.of(context)!.unknown} → ${_activeTrip!.destinationAddress ?? AppLocalizations.of(context)!.unknown}',
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // Stats Row
-            Row(
-              children: [
-                _buildStatItem(
-                  AppLocalizations.of(context)!.miles,
-                  '${_activeTrip!.totalMiles ?? 0}',
-                  Icons.speed,
-                ),
-                _buildStatItem(
-                  AppLocalizations.of(context)!.rate,
-                  '\$${_activeTrip!.rate?.toStringAsFixed(0) ?? "0"}',
-                  Icons.attach_money,
-                ),
-                if (_profitability != null)
-                  _buildStatItem(
-                    AppLocalizations.of(context)!.profit,
-                    '\$${_profitability!.netProfit.toStringAsFixed(0)}',
-                    Icons.trending_up,
-                    isPositive: _profitability!.netProfit >= 0,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // End Trip Button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => Navigator.pushNamed(context, '/trip/active'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: AppTheme.primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                ),
-                child: DualLanguageText(
-                  primaryText: AppLocalizations.of(context)!.viewTripDetails,
-                  subtitleText:
-                      AppLocalizations.of(context)!.viewTripDetailsSubtitle,
-                  alignment: CrossAxisAlignment.center,
-                  primaryStyle: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatItem(
-    String label,
-    String value,
-    IconData icon, {
-    bool isPositive = true,
-  }) {
-    return Expanded(
-      child: Column(
-        children: [
-          Icon(icon, color: Colors.white70, size: 20),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              color: isPositive ? Colors.white : Colors.red.shade200,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /*
-  Widget _buildOwnerDashboardWidgets() {
-    return Column(
-      children: [
-        Row(
-          children: [
-            _buildStatItem(
-                'Available Trucks', 'Checking...', Icons.local_shipping),
-          ],
-        ),
-        // TODO: Implement actual owner stats
-        const SizedBox(height: 16),
-      ],
-    );
-  }
-  */
-
-  Widget _buildNoTripCard() {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Icon(
-              Icons.local_shipping_outlined,
-              size: 64,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            DualLanguageText(
-              primaryText: AppLocalizations.of(context)!.noActiveTrip,
-              subtitleText: AppLocalizations.of(context)!.noActiveTripSubtitle,
-              primaryStyle: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-              alignment: CrossAxisAlignment.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              AppLocalizations.of(context)!.startNewTripTracking,
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRecentLoadsList() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: DualLanguageText(
-            primaryText: 'Latest Load',
-            subtitleText: 'ਨਵੀਨਤਮ ਲੋਡ',
-            primaryStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-          ),
-        ),
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _recentLoads.isEmpty ? 0 : 1, // Only show latest
-          itemBuilder: (context, index) {
-            final load = _recentLoads[index];
-
-            // Calculate Stop Status
-            int totalStops = 0;
-            int completedStops = 0;
-            if (load.rateConfirmations != null &&
-                load.rateConfirmations!.isNotEmpty) {
-              final rc = load.rateConfirmations!.first;
-              if (rc['rc_stops'] != null) {
-                final stops = rc['rc_stops'] as List;
-                totalStops = stops.length;
-                completedStops =
-                    stops.where((s) => s['status'] == 'COMPLETED').length;
-              }
-            }
-
-            // Determine display status
-            String statusText = load.status.toUpperCase();
-            String statusPunjabi = '';
-            Color statusColor = Colors.grey;
-
-            if (_activeTrip != null && _activeTrip!.loadId == load.id) {
-              statusText = 'TRIP STARTED';
-              statusPunjabi = 'ਟ੍ਰਿਪ ਸ਼ੁਰੂ ਹੋਇਆ';
-              statusColor = Colors.green;
-            } else if (load.status.toLowerCase() == 'delivered' ||
-                load.status.toLowerCase() == 'completed') {
-              statusText = 'TRIP ENDED';
-              statusPunjabi = 'ਟ੍ਰਿਪ ਖਤਮ ਹੋਇਆ';
-              statusColor = Colors.blue;
-            } else if (load.status.toLowerCase() == 'assigned') {
-              statusText = 'ASSIGNED';
-              statusPunjabi = 'ਸੌਂਪਿਆ ਗਿਆ';
-              statusColor = Colors.orange;
-            }
-
-            return Card(
-              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: ListTile(
-                title: Text('Load #${load.brokerLoadId ?? "Unknown"}'),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('${load.brokerName ?? "Unknown Broker"}'),
-                    const SizedBox(height: 4),
-                    // Status Row
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: statusColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: statusColor),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(statusText,
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                      color: statusColor)),
-                              if (statusPunjabi.isNotEmpty)
-                                Text(statusPunjabi,
-                                    style: TextStyle(
-                                        fontSize: 10,
-                                        color: statusColor.withOpacity(0.8))),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Stops Status
-                        if (totalStops > 0)
-                          Text('Stops: $completedStops/$totalStops',
-                              style: const TextStyle(
-                                  fontSize: 12, fontWeight: FontWeight.w500)),
-                      ],
+                  child: Text(
+                    load.status.toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
+                  ),
                 ),
-                trailing: Text(
-                  '\$${load.primaryRate?.toStringAsFixed(0) ?? "0"}',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, color: Colors.green),
-                ),
-                isThreeLine: true,
-                onTap: () {
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(0),
+            child: JourneyTimeline(
+              stops: stops,
+              origin: origin,
+              destination: destination,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => LoadDetailsScreen(
-                          load: load
-                              .toJson()), // Temporary mapping if Screen expects Map
+                      builder: (context) =>
+                          LoadDetailsScreen(load: load.toJson()),
                     ),
                   ).then((_) => _loadData());
                 },
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(AppLocalizations.of(context)!.viewTripDetails),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward_ios, size: 14),
+                  ],
+                ),
               ),
-            );
-          },
-        ),
-        const SizedBox(height: 16),
-      ],
-    );
-  }
-
-  Widget _buildActiveDetentionCard(DetentionRecord record) {
-    return Card(
-      color: Colors.red.shade50,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.red.shade200),
-      ),
-      child: ListTile(
-        leading: const Icon(Icons.timer, color: Colors.red, size: 32),
-        title: const Text('DETENTION ACTIVE',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-        subtitle: Text(
-            'Started: ${record.startTime.toLocal().toString().split('.')[0]}'),
-        trailing: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red, foregroundColor: Colors.white),
-          onPressed: () {
-            // Navigate to Load Details
-            // We need the Load object. We only have ID.
-            // We can fetch it or just push LoadDetailsScreen with minimal data (not ideal if it expects full map).
-            // Ideally LoadDetailsScreen fetches data if partial?
-            // Current LoadDetailsScreen expects `final Map<String, dynamic> load;`
-            // We should probably fetch it or modify LoadDetails to support ID-only load.
-            // For now, let's try to find it in _recentLoads
-            try {
-              final load =
-                  _recentLoads.firstWhere((l) => l.id == record.loadId);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => LoadDetailsScreen(load: load.toJson())),
-              ).then((_) => _loadData());
-            } catch (e) {
-              // Not in recent? Fetch it?
-              // Just show snackbar for now or simple "Go to Loads"
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content:
-                        Text('Go to Loads list to manage this detention.')),
-              );
-            }
-          },
-          child: const Text('VIEW'),
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -816,6 +449,108 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickActionsGrid() {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _buildActionButton(
+                icon: Icons.upload_file,
+                label: AppLocalizations.of(context)!.uploadRateCon,
+                subtitle: AppLocalizations.of(context)!.uploadRateConSubtitle,
+                color: Colors.blueAccent,
+                onTap: () => Navigator.pushNamed(
+                  context,
+                  '/scan',
+                  arguments: {'type': 'rate_con'},
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildActionButton(
+                icon: Icons.history,
+                label: AppLocalizations.of(context)!.showOldLoads,
+                subtitle: AppLocalizations.of(context)!.showOldLoadsSubtitle,
+                color: Colors.orangeAccent,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const LoadListScreen(),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildActionButton(
+                icon: Icons.search,
+                label: AppLocalizations.of(context)!.searchDocuments,
+                subtitle: AppLocalizations.of(context)!.searchDocumentsSubtitle,
+                color: Colors.teal,
+                onTap: () => Navigator.pushNamed(context, '/documents'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildActionButton(
+                icon: Icons.attach_money,
+                label: AppLocalizations.of(context)!.expenses,
+                subtitle: AppLocalizations.of(context)!.expensesSubtitle,
+                color: Colors.redAccent,
+                onTap: () => Navigator.pushNamed(context, '/expense'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActiveDetentionCard(DetentionRecord record) {
+    return Card(
+      color: Colors.red.shade50,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.red.shade200),
+      ),
+      child: ListTile(
+        leading: const Icon(Icons.timer, color: Colors.red, size: 32),
+        title: const Text('DETENTION ACTIVE',
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+        subtitle: Text(
+            'Started: ${record.startTime.toLocal().toString().split('.')[0]}'),
+        trailing: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red, foregroundColor: Colors.white),
+          onPressed: () {
+            try {
+              final load =
+                  _recentLoads.firstWhere((l) => l.id == record.loadId);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => LoadDetailsScreen(load: load.toJson())),
+              ).then((_) => _loadData());
+            } catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content:
+                        Text('Go to Loads list to manage this detention.')),
+              );
+            }
+          },
+          child: const Text('VIEW'),
         ),
       ),
     );

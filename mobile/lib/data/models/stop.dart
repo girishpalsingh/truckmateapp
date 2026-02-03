@@ -27,6 +27,7 @@ class Stop {
   final String? specialInstructions;
   final String? specialInstructionsPunjabi;
   final List<Commodity> commodities;
+  final String status; // 'PENDING', 'ARRIVED', 'COMPLETED', etc.
 
   // Computed helpers for display
   String get timeRaw {
@@ -51,6 +52,7 @@ class Stop {
     this.specialInstructions,
     this.specialInstructionsPunjabi,
     this.commodities = const [],
+    this.status = 'PENDING',
   });
 
   factory Stop.fromJson(Map<String, dynamic> json) {
@@ -80,6 +82,7 @@ class Stop {
               .map((e) => Commodity.fromJson(e))
               .toList()
           : [],
+      status: json['status'] ?? 'PENDING',
     );
   }
 
@@ -100,6 +103,7 @@ class Stop {
       'special_instructions': specialInstructions,
       'special_instructions_punjabi': specialInstructionsPunjabi,
       'rc_commodities': commodities.map((e) => e.toJson()).toList(),
+      'status': status,
     };
   }
 

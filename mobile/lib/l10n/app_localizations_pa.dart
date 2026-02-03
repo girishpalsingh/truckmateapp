@@ -435,6 +435,30 @@ class AppLocalizationsPa extends AppLocalizations {
   String get quickActionsSubtitle => 'ਤੇਜ਼ ਕਾਰਵਾਈਆਂ';
 
   @override
+  String get uploadRateCon => 'ਰੇਟ ਕੌਨ ਅੱਪਲੋਡ';
+
+  @override
+  String get uploadRateConSubtitle => 'ਨਵਾਂ ਰੇਟ ਕੌਨ ਅੱਪਲੋਡ ਕਰੋ';
+
+  @override
+  String get showOldLoads => 'ਪੁਰਾਣੇ ਲੋਡ';
+
+  @override
+  String get showOldLoadsSubtitle => 'ਪੁਰਾਣੇ ਲੋਡ ਵੇਖੋ';
+
+  @override
+  String get searchDocuments => 'ਦਸਤਾਵੇਜ਼ ਖੋਜੋ';
+
+  @override
+  String get searchDocumentsSubtitle => 'ਦਸਤਾਵੇਜ਼ ਖੋਜੋ';
+
+  @override
+  String get files => 'ਫਾਇਲਾਂ';
+
+  @override
+  String get filesSubtitle => 'ਫਾਇਲਾਂ';
+
+  @override
   String get scanDoc => 'ਦਸਤਾਵੇਜ਼ ਸਕੈਨ';
 
   @override

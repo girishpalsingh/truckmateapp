@@ -944,6 +944,54 @@ abstract class AppLocalizations {
   /// **'ਤੇਜ਼ ਕਾਰਵਾਈਆਂ'**
   String get quickActionsSubtitle;
 
+  /// No description provided for @uploadRateCon.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload Rate Con'**
+  String get uploadRateCon;
+
+  /// No description provided for @uploadRateConSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਨਵਾਂ ਰੇਟ ਕੌਨ ਅੱਪਲੋਡ ਕਰੋ'**
+  String get uploadRateConSubtitle;
+
+  /// No description provided for @showOldLoads.
+  ///
+  /// In en, this message translates to:
+  /// **'Show Old Loads'**
+  String get showOldLoads;
+
+  /// No description provided for @showOldLoadsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਪੁਰਾਣੇ ਲੋਡ ਵੇਖੋ'**
+  String get showOldLoadsSubtitle;
+
+  /// No description provided for @searchDocuments.
+  ///
+  /// In en, this message translates to:
+  /// **'Search Documents'**
+  String get searchDocuments;
+
+  /// No description provided for @searchDocumentsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਦਸਤਾਵੇਜ਼ ਖੋਜੋ'**
+  String get searchDocumentsSubtitle;
+
+  /// No description provided for @files.
+  ///
+  /// In en, this message translates to:
+  /// **'Files'**
+  String get files;
+
+  /// No description provided for @filesSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ਫਾਇਲਾਂ'**
+  String get filesSubtitle;
+
   /// No description provided for @scanDoc.
   ///
   /// In en, this message translates to:

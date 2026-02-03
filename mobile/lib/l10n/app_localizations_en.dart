@@ -434,6 +434,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quickActionsSubtitle => 'ਤੇਜ਼ ਕਾਰਵਾਈਆਂ';
 
   @override
+  String get uploadRateCon => 'Upload Rate Con';
+
+  @override
+  String get uploadRateConSubtitle => 'ਨਵਾਂ ਰੇਟ ਕੌਨ ਅੱਪਲੋਡ ਕਰੋ';
+
+  @override
+  String get showOldLoads => 'Show Old Loads';
+
+  @override
+  String get showOldLoadsSubtitle => 'ਪੁਰਾਣੇ ਲੋਡ ਵੇਖੋ';
+
+  @override
+  String get searchDocuments => 'Search Documents';
+
+  @override
+  String get searchDocumentsSubtitle => 'ਦਸਤਾਵੇਜ਼ ਖੋਜੋ';
+
+  @override
+  String get files => 'Files';
+
+  @override
+  String get filesSubtitle => 'ਫਾਇਲਾਂ';
+
+  @override
   String get scanDoc => 'Scan Doc';
 
   @override
