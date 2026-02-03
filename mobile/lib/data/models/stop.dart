@@ -25,6 +25,7 @@ class Stop {
   final String? dateRaw; // raw_date_text
 
   final String? specialInstructions;
+  final String? specialInstructionsPunjabi;
   final List<Commodity> commodities;
 
   // Computed helpers for display
@@ -48,6 +49,7 @@ class Stop {
     this.scheduledDeparture,
     this.dateRaw,
     this.specialInstructions,
+    this.specialInstructionsPunjabi,
     this.commodities = const [],
   });
 
@@ -72,6 +74,7 @@ class Stop {
           : null,
       dateRaw: json['raw_date_text'],
       specialInstructions: json['special_instructions'],
+      specialInstructionsPunjabi: json['special_instructions_punjabi'],
       commodities: json['rc_commodities'] != null
           ? (json['rc_commodities'] as List)
               .map((e) => Commodity.fromJson(e))
@@ -95,6 +98,7 @@ class Stop {
       'scheduled_departure': scheduledDeparture?.toIso8601String(),
       'raw_date_text': dateRaw,
       'special_instructions': specialInstructions,
+      'special_instructions_punjabi': specialInstructionsPunjabi,
       'rc_commodities': commodities.map((e) => e.toJson()).toList(),
     };
   }

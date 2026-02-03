@@ -282,7 +282,7 @@ class _DetentionReviewScreenState extends State<DetentionReviewScreen> {
                             color: Colors.white)),
                     Text('\$${_totalDue.toStringAsFixed(2)}',
                         style: const TextStyle(
-                            fontSize: 28,
+                            fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: Colors.white)),
                   ],

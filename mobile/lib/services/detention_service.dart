@@ -45,7 +45,7 @@ class DetentionService {
         'organization_id': organizationId,
         'load_id': loadId,
         'stop_id': stopId,
-        'start_time': DateTime.now().toIso8601String(),
+        'start_time': DateTime.now().toUtc().toIso8601String(),
         'start_location_lat': lat,
         'start_location_lng': lng,
       };
@@ -53,7 +53,8 @@ class DetentionService {
       // Only add photo fields if photo was uploaded
       if (photoPath != null) {
         insertData['evidence_photo_url'] = photoPath;
-        insertData['evidence_photo_time'] = DateTime.now().toIso8601String();
+        insertData['evidence_photo_time'] =
+            DateTime.now().toUtc().toIso8601String();
       }
 
       final response = await _client
@@ -112,7 +113,7 @@ class DetentionService {
       final response = await _client
           .from(DetentionQueries.recordsTable)
           .update({
-            'end_time': DateTime.now().toIso8601String(),
+            'end_time': DateTime.now().toUtc().toIso8601String(),
             'end_location_lat': lat,
             'end_location_lng': lng,
           })
@@ -191,11 +192,64 @@ class DetentionService {
       double ratePerHour = 50.0;
 
       // Try to parse from Rate Con Clauses
+      // Fetch Stop Details
+      Map<String, dynamic>? stop;
+      try {
+        final stopIdInt = int.tryParse(record.stopId);
+        if (stopIdInt != null) {
+          final stopRes = await _client
+              .from('rc_stops')
+              .select()
+              .eq('stop_id', stopIdInt)
+              .maybeSingle();
+          stop = stopRes;
+        }
+      } catch (e) {
+        AppLogger.w(
+            'DetentionService: Could not fetch stop details for invoice');
+      }
+
       final load = recordRes['loads'];
-      if (load != null && load['rate_confirmations'] != null) {
-        // Logic to parse rate_confirmations -> rc_risk_clauses
-        // This depends on how deep the relation is fetched.
-        // Assuming we can find a clause with 'detention'
+      String? bolNumber;
+      String? poNumber;
+
+      if (load != null) {
+        // Use broker_load_id as PO Number by default
+        poNumber = load['broker_load_id'];
+
+        // Try to parse rate from clauses
+        if (load['rate_confirmations'] != null &&
+            load['rate_confirmations'] is List &&
+            (load['rate_confirmations'] as List).isNotEmpty) {
+          final rc = (load['rate_confirmations'] as List).first;
+          if (rc['rc_risk_clauses'] != null) {
+            final clauses = rc['rc_risk_clauses'] as List;
+            for (final clause in clauses) {
+              final title =
+                  (clause['clause_title'] as String?)?.toLowerCase() ?? '';
+              final text =
+                  (clause['original_text'] as String?)?.toLowerCase() ?? '';
+
+              if (title.contains('detention') || text.contains('detention')) {
+                // Try to find rate pattern like $50, $50/hour, $ 50
+                final RegExp rateRegex = RegExp(r'\$\s?(\d+)');
+                final match = rateRegex.firstMatch(text);
+                if (match != null) {
+                  final rateStr = match.group(1);
+                  if (rateStr != null) {
+                    final parsedRate = double.tryParse(rateStr);
+                    if (parsedRate != null) {
+                      ratePerHour = parsedRate;
+                      AppLogger.d(
+                          'Auto-detected detention rate: \$$ratePerHour from clause: $title');
+                      break; // Stop after finding first detention rate
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
 
       double payableHours =
@@ -209,8 +263,17 @@ class DetentionService {
         'total_due': totalDue,
         'currency': 'USD',
         'free_time_hours': freeTimeHours,
-        'bol_number': '', // To be filled by user or fetched if linked
-        'facility_address': '', // Fetch from stop if linked
+        'bol_number': bolNumber ?? '',
+        'po_number': poNumber ?? '',
+        'facility_name': stop?['contact_name'] ??
+            '', // Use contact as facility name fallback
+        'facility_address': stop?['facility_address'] ?? '',
+        'start_location_lat': record.startLocation?['lat'],
+        'start_location_lng': record.startLocation?['lng'],
+        'end_location_lat': record.endLocation?['lat'],
+        'end_location_lng': record.endLocation?['lng'],
+        'start_time': record.startTime.toIso8601String(),
+        'end_time': record.endTime?.toIso8601String(),
       };
     } catch (e, stack) {
       AppLogger.e(
@@ -246,13 +309,17 @@ class DetentionService {
       // Edge function returns { success: true, invoice_id: ..., url: ... }
       // Fetch the newly created record
       final invoiceId = response.data['invoice_id'];
+      final invoiceUrl = response.data['url']; // URL from edge function
+
       final invRes = await _client
           .from(DetentionQueries.invoicesTable)
           .select()
           .eq('id', invoiceId)
           .single();
 
-      return DetentionInvoice.fromJson(invRes);
+      // Create object and inject the signed URL from the response
+      // The DB likely only stores the path or raw URL, not the signed one needed for immediate viewing
+      return DetentionInvoice.fromJson(invRes).copyWith(pdfUrl: invoiceUrl);
     } catch (e, stack) {
       AppLogger.e('DetentionService: Error creating invoice', e, stack);
       rethrow;

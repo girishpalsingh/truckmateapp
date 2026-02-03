@@ -613,6 +613,19 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
       return;
     }
 
+    // Auto-mark as ARRIVED if needed
+    if (_currentStop!['status'] != 'ARRIVED') {
+      await _updateStopStatus('ARRIVED');
+      // Check if update succeeded (status should be updated via setState in _updateStopStatus->checkActiveTrip)
+      // We'll proceed assuming success or let the user try again if it failed.
+      // A small delay might be needed if _updateStopStatus is async but state update is disconnected?
+      // _updateStopStatus awaits _checkActiveTrip which awaits setState. Should be safe.
+      if (_currentStop!['status'] != 'ARRIVED') {
+        // Update failed or cancelled
+        return;
+      }
+    }
+
     // Navigate to Entry Screen
     // Convert stopId to String since database may return int
     final stopIdValue = _currentStop!['id'] ?? _currentStop!['stop_id'];
@@ -896,7 +909,7 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
 
           // Actions
           if (_assignment != null) ...[
-            if (_isTripActiveForLoad && _currentStop != null)
+            if (_isTripActiveForLoad && _currentStop != null) ...[
               if (_currentStop!['status'] == 'ARRIVED') ...[
                 ElevatedButton(
                   onPressed: _showDepartureDialog,
@@ -916,27 +929,6 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                     alignment: CrossAxisAlignment.center,
                   ),
                 ),
-                if (_activeDetention == null) ...[
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: _isLoading ? null : _startDetention,
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16)),
-                    child: const DualLanguageText(
-                      primaryText: 'Start Detention',
-                      subtitleText: 'ਡਿਟੈਂਸ਼ਨ ਸ਼ੁਰੂ ਕਰੋ',
-                      primaryStyle: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white),
-                      subtitleStyle:
-                          TextStyle(fontSize: 12, color: Colors.white70),
-                      alignment: CrossAxisAlignment.center,
-                    ),
-                  ),
-                ],
               ] else
                 ElevatedButton(
                   onPressed: _handleArrivalRequest,
@@ -948,9 +940,7 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                     primaryText: AppLocalizations.of(context)!
                         .confirmReachedDestination(
                             _currentStop!['facility_address'] ?? ""),
-                    subtitleText: AppLocalizations.of(context)!
-                        .confirmReachedDestinationSubtitle(
-                            _currentStop!['facility_address'] ?? ""),
+                    subtitleText: 'ਪਹੁੰਚੇ ਦੀ ਪੁਸ਼ਟੀ ਕਰੋ',
                     primaryStyle: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -958,10 +948,32 @@ class _LoadDetailsScreenState extends State<LoadDetailsScreen> {
                     subtitleStyle:
                         const TextStyle(fontSize: 12, color: Colors.white70),
                     alignment: CrossAxisAlignment.center,
-                    textAlign: TextAlign.center,
                   ),
-                )
-            else if (_isTripActiveForLoad)
+                ),
+
+              // Start Detention Button (Visible for both ARRIVED and PENDING)
+              if (_activeDetention == null) ...[
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _startDetention,
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16)),
+                  child: const DualLanguageText(
+                    primaryText: 'Start Detention',
+                    subtitleText: 'ਡਿਟੈਂਸ਼ਨ ਸ਼ੁਰੂ ਕਰੋ',
+                    primaryStyle: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white),
+                    subtitleStyle:
+                        TextStyle(fontSize: 12, color: Colors.white70),
+                    alignment: CrossAxisAlignment.center,
+                  ),
+                ),
+              ],
+            ] else if (_isTripActiveForLoad)
               // Trip active but no stops or all done?
               ElevatedButton(
                 onPressed: () => Navigator.pushNamed(context, '/trip/active'),

@@ -353,6 +353,9 @@ export const dispatchSheetTemplate = `
                     {{#if notes}}
                         <div class="stop-notes">{{notes}}</div>
                     {{/if}}
+                    {{#if notes_punjabi}}
+                         <div class="stop-notes punjabi-text" style="margin-top:4px;">{{notes_punjabi}}</div>
+                    {{/if}}
                 </div>
                 <div class="time-group">
                     {{scheduledArrival}}
@@ -362,6 +365,41 @@ export const dispatchSheetTemplate = `
         </div>
     </div>
 
+    <!-- Pickup & Delivery Instructions Card -->
+    
+    <!-- We can just check lists directly, assuming simple handlebars -->
+    {{#if pickupSummaries}}
+    <div class="card">
+         <div class="card-header"><h3 class="card-title">Pickup Summaries</h3></div>
+         <div class="card-body">
+            {{#each pickupSummaries}}
+                <div style="margin-bottom:12px;">
+                    <div style="font-weight:600;">{{text}}</div>
+                    {{#if punjabi}}
+                        <div class="punjabi-text">{{punjabi}}</div>
+                    {{/if}}
+                </div>
+            {{/each}}
+         </div>
+    </div>
+    {{/if}}
+
+    {{#if deliverySummaries}}
+    <div class="card">
+         <div class="card-header"><h3 class="card-title">Delivery Summaries</h3></div>
+         <div class="card-body">
+            {{#each deliverySummaries}}
+                <div style="margin-bottom:12px;">
+                    <div style="font-weight:600;">{{text}}</div>
+                    {{#if punjabi}}
+                        <div class="punjabi-text">{{punjabi}}</div>
+                    {{/if}}
+                </div>
+            {{/each}}
+         </div>
+    </div>
+    {{/if}}
+
     <!-- Requirements Grid -->
     <div class="req-grid">
         <div class="req-card">
@@ -370,14 +408,19 @@ export const dispatchSheetTemplate = `
         </div>
         <div class="req-card">
             <div class="req-title">Transit Requirements</div>
-            <div class="req-content">{{transit}}</div>
+            <div class="req-content">
+                {{transit}}
+                {{#if transit_punjabi}}
+                    <div class="punjabi-text" style="font-size:0.85rem; margin-top:4px;">{{transit_punjabi}}</div>
+                {{/if}}
+            </div>
         </div>
     </div>
 
     <!-- Instructions Card -->
     <div class="card">
         <div class="card-header">
-            <h3 class="card-title">Dispatcher Instructions</h3>
+            <h3 class="card-title">Detailed Action Items</h3>
         </div>
         <!-- Remove default padding for list flush look -->
         <div class="card-body" style="padding: 0;">
@@ -397,7 +440,7 @@ export const dispatchSheetTemplate = `
             {{/each}}
             {{#unless instructions}}
                 <div style="padding: 24px; text-align: center; color: var(--gray-500); font-style: italic;">
-                    No specific instructions.
+                    No specific action items.
                 </div>
             {{/unless}}
         </div>

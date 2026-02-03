@@ -151,7 +151,7 @@ Deno.serve(async (req) => withLogging(req, async (req) => {
         allStops.sort((a, b) => new Date(a.scheduled_arrival || 0).getTime() - new Date(b.scheduled_arrival || 0).getTime());
 
         let allInstructions: any[] = []; // Action items
-        let combinedDriverView: any = { special_equipment_needed: [], transit_requirements: [] };
+        let combinedDriverView: any = { special_equipment_needed: [], transit_requirements: [], transit_requirements_punjabi: [] };
 
         rateCons.forEach(rc => {
             // New Schema: rc_dispatch_instructions is a single object (or array of 1?) per RC usually, but relation might return array
@@ -168,21 +168,23 @@ Deno.serve(async (req) => withLogging(req, async (req) => {
                     }
 
                     // Summaries & Reqs (Arrays of strings or JSON)
-                    if (inst.special_equip_en) combinedDriverView.special_equipment_needed.push(...inst.special_equip_en);
-                    if (inst.transit_reqs_en) combinedDriverView.transit_requirements.push(...inst.transit_reqs_en);
+                if (inst.special_equip_en) combinedDriverView.special_equipment_needed.push(...inst.special_equip_en);
+                if (inst.transit_reqs_en) combinedDriverView.transit_requirements.push(...inst.transit_reqs_en);
+                if (inst.transit_reqs_punjabi) combinedDriverView.transit_requirements_punjabi.push(...inst.transit_reqs_punjabi);
                 });
             } else if (instrs) {
                 // Single object case
                 const inst = instrs as any;
                 if (inst.action_items) allInstructions = allInstructions.concat(inst.action_items);
                 if (inst.special_equip_en) combinedDriverView.special_equipment_needed.push(...inst.special_equip_en);
-                if (inst.transit_reqs_en) combinedDriverView.transit_requirements.push(...inst.transit_reqs_en);
+                if (inst.transit_reqs_punjabi) combinedDriverView.transit_requirements_punjabi.push(...inst.transit_reqs_punjabi);
             }
         });
 
         // Deduplicate
         combinedDriverView.special_equipment_needed = [...new Set(combinedDriverView.special_equipment_needed)];
         combinedDriverView.transit_requirements = [...new Set(combinedDriverView.transit_requirements)];
+        combinedDriverView.transit_requirements_punjabi = [...new Set(combinedDriverView.transit_requirements_punjabi)];
 
 
         // ---------------------------------------------------------
@@ -337,7 +339,8 @@ Deno.serve(async (req) => withLogging(req, async (req) => {
                 address: addressRaw,
                 mapLink,
                 scheduledArrival: formatDate(stop.scheduled_arrival),
-                notes: stop.special_instructions || '-'
+                notes: stop.special_instructions || '-',
+                notes_punjabi: stop.special_instructions_punjabi || ''
             };
         });
 
@@ -349,6 +352,35 @@ Deno.serve(async (req) => withLogging(req, async (req) => {
             title_punjab: i.title_punjab || i.title_punjabi || '', // Handle both keys just in case
             description_punjab: i.description_punjab || i.description_punjabi || ''
         }));
+
+        // Pickup / Delivery Summaries
+        let pickupSummaries: any[] = [];
+        let deliverySummaries: any[] = [];
+        
+        rateCons.forEach(rc => {
+             const instrs = rc.rc_dispatch_instructions || [];
+             const list = Array.isArray(instrs) ? instrs : (instrs ? [instrs] : []);
+             list.forEach((inst: any) => {
+                 if (inst.pickup_summary || inst.pickup_summary_punjabi) {
+                     pickupSummaries.push({
+                         text: inst.pickup_summary,
+                         punjabi: inst.pickup_summary_punjabi
+                     });
+                 }
+                 if (inst.delivery_summary || inst.delivery_summary_punjabi) {
+                     deliverySummaries.push({
+                         text: inst.delivery_summary,
+                         punjabi: inst.delivery_summary_punjabi
+                     });
+                 }
+             });
+        });
+
+        // Unique by text to avoid dups
+        // Simple dedupe by stringifying
+        pickupSummaries = [...new Map(pickupSummaries.map(item => [JSON.stringify(item), item])).values()];
+        deliverySummaries = [...new Map(deliverySummaries.map(item => [JSON.stringify(item), item])).values()];
+
 
         // Rate Cons ID list (using load_id field from new schema)
         const refIds = rateCons.map(r => r.load_id || r.rate_con_id).filter(Boolean).join(', ');
@@ -365,7 +397,10 @@ Deno.serve(async (req) => withLogging(req, async (req) => {
             stops: stopsMapped,
             equipment: combinedDriverView.special_equipment_needed.join(', '),
             transit: combinedDriverView.transit_requirements.join(', '),
-            instructions: instructionsMapped
+            transit_punjabi: combinedDriverView.transit_requirements_punjabi.join(', '),
+            instructions: instructionsMapped,
+            pickupSummaries,
+            deliverySummaries
         };
 
         const compiledTemplate = Handlebars.compile(dispatchSheetTemplate);

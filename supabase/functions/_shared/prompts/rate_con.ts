@@ -82,6 +82,7 @@ JSON Schema:
           "scheduled_arrival": { "type": ["string", "null"], "format": "date-time" },
           "scheduled_departure": { "type": ["string", "null"], "format": "date-time" },
           "special_instructions": { "type": ["string", "null"] },
+          "special_instructions_punjabi": { "type": ["string", "null"] },
           "commodities": {
             "type": "array",
             "items": {
@@ -137,7 +138,9 @@ JSON Schema:
       "type": "object",
       "properties": {
         "pickup_instructions": { "type": ["string", "null"] },
+        "pickup_instructions_punjabi": { "type": ["string", "null"] },
         "delivery_instructions": { "type": ["string", "null"] },
+        "delivery_instructions_punjabi": { "type": ["string", "null"] },
         "transit_requirements_en": { "type": "array", "items": { "type": "string" } },
         "transit_requirements_punjabi": { "type": "array", "items": { "type": "string" } },
         "driver_dispatch_instructions": {

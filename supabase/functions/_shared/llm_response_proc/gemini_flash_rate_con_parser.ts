@@ -106,6 +106,7 @@ export function mapRcStops(rateConfirmationUUID: string | null, extractedData: a
             scheduled_departure: parseDate(stop.scheduled_departure),
 
             special_instructions: stop.special_instructions || null,
+            special_instructions_punjabi: stop.special_instructions_punjabi || null,
         };
 
         const commodities = (stop.commodities || []).map((comm: any) => ({
@@ -188,6 +189,8 @@ export function mapRcDispatchInstructions(rateConfirmationUUID: string | null, e
         rate_confirmation_id: rateConfirmationUUID,
         pickup_summary: dd.pickup_instructions || null,
         delivery_summary: dd.delivery_instructions || null,
+        pickup_summary_punjabi: dd.pickup_instructions_punjabi || null,
+        delivery_summary_punjabi: dd.delivery_instructions_punjabi || null,
         transit_reqs_en,
         transit_reqs_punjabi,
         special_equip_en,
