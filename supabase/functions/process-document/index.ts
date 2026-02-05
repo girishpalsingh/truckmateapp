@@ -89,6 +89,16 @@ serve(async (req) => withLogging(req, async (req) => {
             },
         });
 
+        // Track Metric (Monetization)
+        await supabase.rpc('increment_user_metric', {
+            action_name: 'rate_con_processed',
+            resource_id_param: document_id,
+            metadata_param: { 
+                confidence: result.confidence,
+                llm_provider: result.modelUsed
+            }
+        });
+
         return new Response(
             JSON.stringify({
                 success: true,

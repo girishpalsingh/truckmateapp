@@ -64,52 +64,27 @@ export async function getDispatchSheet(loadId: string): Promise<{
   const supabase = await getSupabase();
   
   try {
-    // First check load_dispatch_config for the generated sheet URL
-    const { data: config, error: configError } = await supabase
-      .from('load_dispatch_config')
-      .select('generated_sheet_url')
-      .eq('load_id', loadId)
-      .maybeSingle();
+    // Call Edge Function to get URL and track usage (Server-Side Metrics)
+    const { data, error } = await supabase.functions.invoke('get-dispatch-sheet-url', {
+      body: { load_id: loadId }
+    });
 
-    if (config?.generated_sheet_url) {
-      // Generate a signed URL for the stored PDF
-      const { data: signedData } = await supabase
-        .storage
-        .from('documents')
-        .createSignedUrl(config.generated_sheet_url, 3600);
-
-      return {
-        success: true,
-        signedUrl: signedData?.signedUrl,
-        document: {
-          id: '',
-          image_url: config.generated_sheet_url
-        }
-      };
+    if (error) {
+      console.error('Edge Function Error:', error);
+      return { success: false, error: error.message };
     }
 
-    // Fallback: check documents table
-    const { data: doc, error: docError } = await supabase
-      .from('documents')
-      .select('id, image_url')
-      .eq('load_id', loadId)
-      .eq('ai_data->>subtype', 'dispatch_sheet')
-      .maybeSingle();
-
-    if (docError || !doc) {
-      return { success: false, error: 'No dispatch sheet found' };
+    if (data.error) {
+      return { success: false, error: data.error };
     }
-
-    // Generate signed URL
-    const { data: signedData } = await supabase
-      .storage
-      .from('documents')
-      .createSignedUrl(doc.image_url, 3600);
 
     return {
       success: true,
-      document: doc,
-      signedUrl: signedData?.signedUrl
+      signedUrl: data.url,
+      document: {
+        id: data.document_id || '',
+        image_url: data.path
+      }
     };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

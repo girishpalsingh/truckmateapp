@@ -655,6 +655,61 @@ $$;
 ALTER FUNCTION "public"."handle_new_user"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."increment_user_metric"("action_name" "text", "resource_id_param" "text" DEFAULT NULL::"text", "metadata_param" "jsonb" DEFAULT '{}'::"jsonb") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $_$
+declare
+  curr_user_id uuid;
+  curr_org_id uuid;
+  column_name text;
+begin
+  -- Get current user
+  curr_user_id := auth.uid();
+  if curr_user_id is null then
+    -- Allow passing user_id in metadata for system triggers (like database triggers where auth.uid() might be null or different)
+    if metadata_param ? 'user_id' then
+       curr_user_id := (metadata_param->>'user_id')::uuid;
+    else
+       raise exception 'User not authenticated';
+    end if;
+  end if;
+
+  -- Get user's organization (optional, best effort)
+  select organization_id into curr_org_id
+  from public.profiles
+  where id = curr_user_id;
+
+  -- Map action to column
+  case action_name
+    when 'rate_con_uploaded' then column_name := 'rate_cons_uploaded';
+    when 'rate_con_processed' then column_name := 'rate_cons_processed';
+    when 'dispatch_sheet_generated' then column_name := 'dispatch_sheets_generated';
+    when 'dispatch_sheet_downloaded' then column_name := 'dispatch_sheets_downloaded';
+    when 'email_sent' then column_name := 'emails_sent';
+    else raise exception 'Invalid action name: %', action_name;
+  end case;
+
+  -- Upsert into user_metrics
+  execute format('
+    insert into public.user_metrics (user_id, organization_id, %I)
+    values ($1, $2, 1)
+    on conflict (user_id) do update
+    set %I = user_metrics.%I + 1,
+        updated_at = now();
+  ', column_name, column_name, column_name)
+  using curr_user_id, curr_org_id;
+
+  -- Insert into log
+  insert into public.user_activity_log (user_id, organization_id, action_type, resource_id, metadata)
+  values (curr_user_id, curr_org_id, action_name, resource_id_param, metadata_param);
+
+end;
+$_$;
+
+
+ALTER FUNCTION "public"."increment_user_metric"("action_name" "text", "resource_id_param" "text", "metadata_param" "jsonb") OWNER TO "supabase_admin";
+
+
 CREATE OR REPLACE FUNCTION "public"."is_system_admin"() RETURNS boolean
     LANGUAGE "sql" SECURITY DEFINER
     AS $$
@@ -792,6 +847,28 @@ CREATE OR REPLACE FUNCTION "public"."test_func"() RETURNS "void"
 ALTER FUNCTION "public"."test_func"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."track_rate_con_upload"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+begin
+  -- Only track if type is 'rate_con' and we have an uploaded_by user
+  if NEW.type = 'rate_con' and NEW.uploaded_by is not null then
+    -- Call the increment function
+    -- access 'uploaded_by' as the user_id
+    perform public.increment_user_metric(
+      'rate_con_uploaded',
+      NEW.id::text,
+      jsonb_build_object('user_id', NEW.uploaded_by, 'source', 'trigger')
+    );
+  end if;
+  return NEW;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."track_rate_con_upload"() OWNER TO "supabase_admin";
+
+
 CREATE OR REPLACE FUNCTION "public"."trigger_log_document_delete"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -834,6 +911,19 @@ $$;
 
 
 ALTER FUNCTION "public"."trigger_log_document_upload"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_detention_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_detention_updated_at"() OWNER TO "supabase_admin";
 
 
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
@@ -957,6 +1047,73 @@ CREATE TABLE IF NOT EXISTS "public"."bol_validations" (
 
 
 ALTER TABLE "public"."bol_validations" OWNER TO "supabase_admin";
+
+
+CREATE TABLE IF NOT EXISTS "public"."detention_invoices" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "organization_id" "uuid" NOT NULL,
+    "detention_record_id" "uuid" NOT NULL,
+    "load_id" "uuid" NOT NULL,
+    "invoice_number" "text" NOT NULL,
+    "detention_invoice_display_number" "text",
+    "po_number" "text",
+    "bol_number" "text",
+    "facility_name" "text",
+    "facility_address" "text",
+    "start_time" timestamp with time zone,
+    "end_time" timestamp with time zone,
+    "start_location_lat" numeric(9,6),
+    "start_location_lng" numeric(9,6),
+    "end_location_lat" numeric(9,6),
+    "end_location_lng" numeric(9,6),
+    "detention_photo_link" "text",
+    "detention_photo_time" timestamp with time zone,
+    "rate_per_hour" numeric(10,2) NOT NULL,
+    "total_hours" numeric(10,2) NOT NULL,
+    "payable_hours" numeric(10,2) NOT NULL,
+    "currency" character varying(3) DEFAULT 'USD'::character varying,
+    "total_due" numeric(10,2) NOT NULL,
+    "amount" numeric(10,2) NOT NULL,
+    "pdf_url" "text",
+    "status" character varying(20) DEFAULT 'DRAFT'::character varying,
+    "broker_email" "text",
+    "sent_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    CONSTRAINT "detention_invoices_status_check" CHECK ((("status")::"text" = ANY ((ARRAY['DRAFT'::character varying, 'APPROVED'::character varying, 'SENT'::character varying, 'PAID'::character varying])::"text"[])))
+);
+
+
+ALTER TABLE "public"."detention_invoices" OWNER TO "supabase_admin";
+
+
+COMMENT ON TABLE "public"."detention_invoices" IS 'Stores finalized detention invoices with calculated charges and PDF links.';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."detention_records" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "organization_id" "uuid" NOT NULL,
+    "load_id" "uuid" NOT NULL,
+    "stop_id" integer,
+    "start_time" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "start_location_lat" numeric(9,6),
+    "start_location_lng" numeric(9,6),
+    "end_time" timestamp with time zone,
+    "end_location_lat" numeric(9,6),
+    "end_location_lng" numeric(9,6),
+    "evidence_photo_url" "text",
+    "evidence_photo_time" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."detention_records" OWNER TO "supabase_admin";
+
+
+COMMENT ON TABLE "public"."detention_records" IS 'Stores detention time records for loads at stops. Created when driver starts detention timer, updated when stopped.';
+
 
 
 CREATE TABLE IF NOT EXISTS "public"."devices" (
@@ -1407,7 +1564,9 @@ CREATE TABLE IF NOT EXISTS "public"."rc_dispatch_instructions" (
     "transit_reqs_punjabi" "jsonb",
     "special_equip_en" "jsonb",
     "special_equip_punjabi" "jsonb",
-    "action_items" "jsonb"
+    "action_items" "jsonb",
+    "pickup_summary_punjabi" "text",
+    "delivery_summary_punjabi" "text"
 );
 
 
@@ -1538,6 +1697,7 @@ CREATE TABLE IF NOT EXISTS "public"."rc_stops" (
     "status" "public"."stop_status_enum" DEFAULT 'PENDING'::"public"."stop_status_enum",
     "actual_arrival" timestamp with time zone,
     "actual_departure" timestamp with time zone,
+    "special_instructions_punjabi" "text",
     CONSTRAINT "rc_stops_stop_type_check" CHECK ((("stop_type")::"text" = ANY (ARRAY[('Pickup'::character varying)::"text", ('Delivery'::character varying)::"text"])))
 );
 
@@ -1669,6 +1829,37 @@ CREATE TABLE IF NOT EXISTS "public"."trucks" (
 ALTER TABLE "public"."trucks" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."user_activity_log" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "organization_id" "uuid",
+    "action_type" "text" NOT NULL,
+    "resource_id" "text",
+    "metadata" "jsonb" DEFAULT '{}'::"jsonb",
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."user_activity_log" OWNER TO "supabase_admin";
+
+
+CREATE TABLE IF NOT EXISTS "public"."user_metrics" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "organization_id" "uuid",
+    "rate_cons_uploaded" bigint DEFAULT 0,
+    "rate_cons_processed" bigint DEFAULT 0,
+    "dispatch_sheets_generated" bigint DEFAULT 0,
+    "dispatch_sheets_downloaded" bigint DEFAULT 0,
+    "emails_sent" bigint DEFAULT 0,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."user_metrics" OWNER TO "supabase_admin";
+
+
 ALTER TABLE ONLY "public"."rate_confirmations" ALTER COLUMN "rc_id" SET DEFAULT "nextval"('"public"."rate_confirmations_rc_id_seq"'::"regclass");
 
 
@@ -1723,6 +1914,21 @@ ALTER TABLE ONLY "public"."bol_references"
 
 ALTER TABLE ONLY "public"."bol_validations"
     ADD CONSTRAINT "bol_validations_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."detention_invoices"
+    ADD CONSTRAINT "detention_invoices_invoice_number_key" UNIQUE ("invoice_number");
+
+
+
+ALTER TABLE ONLY "public"."detention_invoices"
+    ADD CONSTRAINT "detention_invoices_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."detention_records"
+    ADD CONSTRAINT "detention_records_pkey" PRIMARY KEY ("id");
 
 
 
@@ -1906,6 +2112,21 @@ ALTER TABLE ONLY "public"."trucks"
 
 
 
+ALTER TABLE ONLY "public"."user_activity_log"
+    ADD CONSTRAINT "user_activity_log_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."user_metrics"
+    ADD CONSTRAINT "user_metrics_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."user_metrics"
+    ADD CONSTRAINT "user_metrics_user_id_key" UNIQUE ("user_id");
+
+
+
 CREATE INDEX "document_embeddings_embedding_idx" ON "public"."document_embeddings" USING "ivfflat" ("embedding" "public"."vector_cosine_ops") WITH ("lists"='100');
 
 
@@ -1979,6 +2200,30 @@ CREATE INDEX "idx_bol_val_bol" ON "public"."bol_validations" USING "btree" ("bol
 
 
 CREATE INDEX "idx_bol_val_load" ON "public"."bol_validations" USING "btree" ("load_id");
+
+
+
+CREATE INDEX "idx_detention_invoices_load" ON "public"."detention_invoices" USING "btree" ("load_id");
+
+
+
+CREATE INDEX "idx_detention_invoices_org" ON "public"."detention_invoices" USING "btree" ("organization_id");
+
+
+
+CREATE INDEX "idx_detention_invoices_record" ON "public"."detention_invoices" USING "btree" ("detention_record_id");
+
+
+
+CREATE INDEX "idx_detention_records_active" ON "public"."detention_records" USING "btree" ("load_id") WHERE ("end_time" IS NULL);
+
+
+
+CREATE INDEX "idx_detention_records_load" ON "public"."detention_records" USING "btree" ("load_id");
+
+
+
+CREATE INDEX "idx_detention_records_org" ON "public"."detention_records" USING "btree" ("organization_id");
 
 
 
@@ -2074,6 +2319,14 @@ CREATE INDEX "idx_trucks_org" ON "public"."trucks" USING "btree" ("organization_
 
 
 
+CREATE OR REPLACE TRIGGER "detention_invoices_updated_at" BEFORE UPDATE ON "public"."detention_invoices" FOR EACH ROW EXECUTE FUNCTION "public"."update_detention_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "detention_records_updated_at" BEFORE UPDATE ON "public"."detention_records" FOR EACH ROW EXECUTE FUNCTION "public"."update_detention_updated_at"();
+
+
+
 CREATE OR REPLACE TRIGGER "document_delete_audit" BEFORE DELETE ON "public"."documents" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_log_document_delete"();
 
 
@@ -2083,6 +2336,10 @@ CREATE OR REPLACE TRIGGER "document_upload_audit" AFTER INSERT ON "public"."docu
 
 
 CREATE OR REPLACE TRIGGER "ensure_driver_locations_immutable" BEFORE UPDATE ON "public"."driver_locations" FOR EACH ROW EXECUTE FUNCTION "public"."check_driver_locations_immutable"();
+
+
+
+CREATE OR REPLACE TRIGGER "on_rate_con_upload" AFTER INSERT ON "public"."documents" FOR EACH ROW EXECUTE FUNCTION "public"."track_rate_con_upload"();
 
 
 
@@ -2157,6 +2414,31 @@ ALTER TABLE ONLY "public"."bol_references"
 
 ALTER TABLE ONLY "public"."bol_validations"
     ADD CONSTRAINT "bol_validations_bol_id_fkey" FOREIGN KEY ("bol_id") REFERENCES "public"."bill_of_ladings"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."detention_invoices"
+    ADD CONSTRAINT "detention_invoices_detention_record_id_fkey" FOREIGN KEY ("detention_record_id") REFERENCES "public"."detention_records"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."detention_invoices"
+    ADD CONSTRAINT "detention_invoices_load_id_fkey" FOREIGN KEY ("load_id") REFERENCES "public"."loads"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."detention_invoices"
+    ADD CONSTRAINT "detention_invoices_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."detention_records"
+    ADD CONSTRAINT "detention_records_load_id_fkey" FOREIGN KEY ("load_id") REFERENCES "public"."loads"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."detention_records"
+    ADD CONSTRAINT "detention_records_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
 
 
 
@@ -2465,6 +2747,26 @@ ALTER TABLE ONLY "public"."trucks"
 
 
 
+ALTER TABLE ONLY "public"."user_activity_log"
+    ADD CONSTRAINT "user_activity_log_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."user_activity_log"
+    ADD CONSTRAINT "user_activity_log_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."user_metrics"
+    ADD CONSTRAINT "user_metrics_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."user_metrics"
+    ADD CONSTRAINT "user_metrics_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
 CREATE POLICY "Drivers can insert their own locations" ON "public"."driver_locations" FOR INSERT TO "authenticated" WITH CHECK ((("driver_id" = "auth"."uid"()) AND ("organization_id" = "public"."get_user_organization_id"())));
 
 
@@ -2655,6 +2957,14 @@ CREATE POLICY "Users can create expenses" ON "public"."expenses" FOR INSERT TO "
 
 
 
+CREATE POLICY "Users can delete detention invoices in their organization" ON "public"."detention_invoices" FOR DELETE USING (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
+CREATE POLICY "Users can delete detention records in their organization" ON "public"."detention_records" FOR DELETE USING (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
 CREATE POLICY "Users can insert bol_line_items" ON "public"."bol_line_items" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."bill_of_ladings" "b"
   WHERE (("b"."id" = "bol_line_items"."bol_id") AND ("b"."organization_id" = "public"."get_user_organization_id"())))));
@@ -2667,6 +2977,14 @@ CREATE POLICY "Users can insert bol_references" ON "public"."bol_references" FOR
 
 
 
+CREATE POLICY "Users can insert detention invoices in their organization" ON "public"."detention_invoices" FOR INSERT WITH CHECK (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
+CREATE POLICY "Users can insert detention records in their organization" ON "public"."detention_records" FOR INSERT WITH CHECK (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
 CREATE POLICY "Users can insert own org loads" ON "public"."loads" FOR INSERT WITH CHECK (("organization_id" IN ( SELECT "profiles"."organization_id"
    FROM "public"."profiles"
   WHERE ("profiles"."id" = "auth"."uid"()))));
@@ -2674,6 +2992,14 @@ CREATE POLICY "Users can insert own org loads" ON "public"."loads" FOR INSERT WI
 
 
 CREATE POLICY "Users can insert their own devices" ON "public"."devices" FOR INSERT TO "authenticated" WITH CHECK (true);
+
+
+
+CREATE POLICY "Users can update detention invoices in their organization" ON "public"."detention_invoices" FOR UPDATE USING (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
+CREATE POLICY "Users can update detention records in their organization" ON "public"."detention_records" FOR UPDATE USING (("organization_id" = "public"."get_user_organization_id"()));
 
 
 
@@ -2728,6 +3054,14 @@ CREATE POLICY "Users can view bol_references" ON "public"."bol_references" FOR S
 CREATE POLICY "Users can view bol_validations" ON "public"."bol_validations" FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."bill_of_ladings" "b"
   WHERE (("b"."id" = "bol_validations"."bol_id") AND ("b"."organization_id" = "public"."get_user_organization_id"())))));
+
+
+
+CREATE POLICY "Users can view detention invoices in their organization" ON "public"."detention_invoices" FOR SELECT USING (("organization_id" = "public"."get_user_organization_id"()));
+
+
+
+CREATE POLICY "Users can view detention records in their organization" ON "public"."detention_records" FOR SELECT USING (("organization_id" = "public"."get_user_organization_id"()));
 
 
 
@@ -2817,6 +3151,14 @@ CREATE POLICY "Users can view org trucks" ON "public"."trucks" FOR SELECT TO "au
 
 
 
+CREATE POLICY "Users can view own activity log" ON "public"."user_activity_log" FOR SELECT TO "authenticated" USING (("user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "Users can view own metrics" ON "public"."user_metrics" FOR SELECT TO "authenticated" USING (("user_id" = "auth"."uid"()));
+
+
+
 CREATE POLICY "Users can view own org loads" ON "public"."loads" FOR SELECT USING (("organization_id" IN ( SELECT "profiles"."organization_id"
    FROM "public"."profiles"
   WHERE ("profiles"."id" = "auth"."uid"()))));
@@ -2840,6 +3182,12 @@ ALTER TABLE "public"."bol_references" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."bol_validations" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."detention_invoices" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."detention_records" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."devices" ENABLE ROW LEVEL SECURITY;
@@ -2934,6 +3282,12 @@ ALTER TABLE "public"."trips" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."trucks" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."user_activity_log" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."user_metrics" ENABLE ROW LEVEL SECURITY;
 
 
 
@@ -5907,6 +6261,13 @@ GRANT ALL ON FUNCTION "public"."hnswhandler"("internal") TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."increment_user_metric"("action_name" "text", "resource_id_param" "text", "metadata_param" "jsonb") TO "postgres";
+GRANT ALL ON FUNCTION "public"."increment_user_metric"("action_name" "text", "resource_id_param" "text", "metadata_param" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."increment_user_metric"("action_name" "text", "resource_id_param" "text", "metadata_param" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."increment_user_metric"("action_name" "text", "resource_id_param" "text", "metadata_param" "jsonb") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."inner_product"("public"."halfvec", "public"."halfvec") TO "postgres";
 GRANT ALL ON FUNCTION "public"."inner_product"("public"."halfvec", "public"."halfvec") TO "anon";
 GRANT ALL ON FUNCTION "public"."inner_product"("public"."halfvec", "public"."halfvec") TO "authenticated";
@@ -6225,6 +6586,13 @@ GRANT ALL ON FUNCTION "public"."test_func"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."track_rate_con_upload"() TO "postgres";
+GRANT ALL ON FUNCTION "public"."track_rate_con_upload"() TO "anon";
+GRANT ALL ON FUNCTION "public"."track_rate_con_upload"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."track_rate_con_upload"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."trigger_log_document_delete"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_log_document_delete"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."trigger_log_document_delete"() TO "service_role";
@@ -6234,6 +6602,13 @@ GRANT ALL ON FUNCTION "public"."trigger_log_document_delete"() TO "service_role"
 GRANT ALL ON FUNCTION "public"."trigger_log_document_upload"() TO "anon";
 GRANT ALL ON FUNCTION "public"."trigger_log_document_upload"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."trigger_log_document_upload"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_detention_updated_at"() TO "postgres";
+GRANT ALL ON FUNCTION "public"."update_detention_updated_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_detention_updated_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_detention_updated_at"() TO "service_role";
 
 
 
@@ -6558,6 +6933,20 @@ GRANT ALL ON TABLE "public"."bol_validations" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."detention_invoices" TO "postgres";
+GRANT ALL ON TABLE "public"."detention_invoices" TO "anon";
+GRANT ALL ON TABLE "public"."detention_invoices" TO "authenticated";
+GRANT ALL ON TABLE "public"."detention_invoices" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."detention_records" TO "postgres";
+GRANT ALL ON TABLE "public"."detention_records" TO "anon";
+GRANT ALL ON TABLE "public"."detention_records" TO "authenticated";
+GRANT ALL ON TABLE "public"."detention_records" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."devices" TO "anon";
 GRANT ALL ON TABLE "public"."devices" TO "authenticated";
 GRANT ALL ON TABLE "public"."devices" TO "service_role";
@@ -6793,6 +7182,20 @@ GRANT ALL ON TABLE "public"."trips" TO "service_role";
 GRANT ALL ON TABLE "public"."trucks" TO "anon";
 GRANT ALL ON TABLE "public"."trucks" TO "authenticated";
 GRANT ALL ON TABLE "public"."trucks" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."user_activity_log" TO "postgres";
+GRANT ALL ON TABLE "public"."user_activity_log" TO "anon";
+GRANT ALL ON TABLE "public"."user_activity_log" TO "authenticated";
+GRANT ALL ON TABLE "public"."user_activity_log" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."user_metrics" TO "postgres";
+GRANT ALL ON TABLE "public"."user_metrics" TO "anon";
+GRANT ALL ON TABLE "public"."user_metrics" TO "authenticated";
+GRANT ALL ON TABLE "public"."user_metrics" TO "service_role";
 
 
 

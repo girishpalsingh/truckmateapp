@@ -32,7 +32,7 @@ serve(async (req) => withLogging(req, async (req) => {
       );
     }
 
-    const body: EmailRequest = await req.json();
+    const body: any = await req.json();
     const { to, subject, html, text, template, template_data, attachments } = body;
 
     if (!to || !subject) {
@@ -92,6 +92,28 @@ serve(async (req) => withLogging(req, async (req) => {
     }
 
     const result = await response.json();
+
+
+
+    // Track Metric
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.39.0");
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // We need the user ID. authorizeUser(req) returns the user, but we didn't capture it.
+    // authorizeUser throws if invalid. To get the ID, we can decode the JWT or use getUser.
+    const authHeader = req.headers.get('Authorization')!;
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user } } = await supabase.auth.getUser(token);
+
+    if (user) {
+        await supabase.rpc('increment_user_metric', {
+            action_name: 'email_sent',
+            resource_id_param: result.id,
+            metadata_param: { subject, to: Array.isArray(to) ? to.join(',') : to }
+        });
+    }
 
     return new Response(
       JSON.stringify({ success: true, message_id: result.id }),

@@ -490,6 +490,13 @@ Deno.serve(async (req) => withLogging(req, async (req) => {
             type: 'dispatch_sheet'
         });
 
+        // Track Metric
+        await supabase.rpc('increment_user_metric', {
+            action_name: 'dispatch_sheet_generated',
+            resource_id_param: docRecord?.id || contextId,
+            metadata_param: { trip_id, load_id, path: fileName }
+        });
+
         return new Response(
             JSON.stringify({
                 success: true,
