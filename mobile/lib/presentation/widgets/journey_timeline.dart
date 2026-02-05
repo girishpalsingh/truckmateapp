@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/models/stop.dart';
 import '../themes/app_theme.dart';
+import '../widgets/glass_container.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class JourneyTimeline extends StatelessWidget {
@@ -25,19 +26,9 @@ class JourneyTimeline extends StatelessWidget {
     final sortedStops = List<Stop>.from(stops)
       ..sort((a, b) => a.sequenceNumber.compareTo(b.sequenceNumber));
 
-    return Container(
+    return GlassContainer(
+      color: Colors.white.withOpacity(0.8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -135,13 +126,28 @@ class JourneyTimeline extends StatelessWidget {
                   height: 24,
                   decoration: BoxDecoration(
                     color: isActive
-                        ? Colors.green
-                        : (isCompleted
-                            ? Colors.grey.shade200
-                            : AppTheme.primaryColor),
+                        ? null
+                        : (isCompleted ? Colors.grey.shade200 : null),
+                    gradient: isActive
+                        ? const LinearGradient(colors: [
+                            Color(0xFF10B981),
+                            Color(0xFF34D399)
+                          ]) // Green gradient
+                        : (isCompleted ? null : AppTheme.primaryGradient),
                     shape: BoxShape.circle,
                     border: isActive
                         ? Border.all(color: Colors.green.shade200, width: 4)
+                        : null,
+                    boxShadow: isActive || !isCompleted
+                        ? [
+                            BoxShadow(
+                                color: (isActive
+                                        ? Colors.green
+                                        : AppTheme.primaryColor)
+                                    .withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4))
+                          ]
                         : null,
                   ),
                   child: Center(

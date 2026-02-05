@@ -1,0 +1,88 @@
+{
+    "project_name": "TruckMate",
+    "version": "1.0.0",
+    "supabase": {
+        "project_url": "http://127.0.0.1:54321",
+        "anon_key": "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH",
+        "service_role_key": "sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz",
+        "database_password": "postgres",
+        "region": "local"
+    },
+    "powersync": {
+        "instance_url": "https://6961f5f230605f245f010c5b.powersync.journeyapps.com",
+        "api_key": "YOUR_POWERSYNC_API_KEY"
+    },
+    "llm": {
+        "default_provider": "gemini",
+        "gemini": {
+            "api_key": "AIzaSyB6q1HNrIN5lOHrGeB5M72eAa2fSXuAR8Q",
+            "model": "gemini-3-flash-preview"
+        },
+        "openai": {
+            "api_key": "YOUR_OPENAI_API_KEY",
+            "model": "gpt-4o"
+        },
+        "claude": {
+            "api_key": "YOUR_CLAUDE_API_KEY",
+            "model": "claude-3-sonnet"
+        }
+    },
+    "twilio": {
+        "account_sid": "YOUR_TWILIO_ACCOUNT_SID",
+        "auth_token": "YOUR_TWILIO_AUTH_TOKEN",
+        "phone_number": "+1XXXXXXXXXX"
+    },
+    "fcm": {
+        "server_key": "YOUR_FCM_SERVER_KEY"
+    },
+    "resend": {
+        "api_key": "re_eKFgtPrG_LaQG2iAvwb7P5bqKqn2Y6UZb",
+        "from_email": "noreply@oktata.store"
+    },
+    "pdfservice": {
+        "browserUrl": "ws://192.168.68.128:3000",
+        "browserToken": "my-secret-token-123"
+    },
+    "development": {
+        "enabled": true,
+        "default_otp": "123456",
+        "skip_twilio": true,
+        "skip_email": false,
+        "log_level": "debug",
+        "mock_llm": false
+    },
+    "storage": {
+        "bucket_prefix": "truckmate",
+        "max_file_size_mb": 50,
+        "allowed_extensions": [
+            "jpg",
+            "jpeg",
+            "png",
+            "pdf",
+            "heic"
+        ]
+    },
+    "ifta": {
+        "auto_generate_reports": true,
+        "report_frequency": "quarterly",
+        "send_for_review": true
+    },
+    "voice_commands": {
+        "enabled": true,
+        "offline_support": true,
+        "default_language": "en-US"
+    },
+    "location_tracking": {
+        "enabled": true,
+        "interval_seconds": 60,
+        "distance_filter_meters": 10
+    },
+    "localization": {
+        "primary_language": "en",
+        "secondary_language": "pa",
+        "supported_languages": [
+            "en",
+            "pa"
+        ]
+    }
+}

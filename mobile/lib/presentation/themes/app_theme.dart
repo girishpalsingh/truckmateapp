@@ -3,17 +3,49 @@ import 'package:google_fonts/google_fonts.dart';
 
 /// TruckMate App Theme - Bright, action-oriented design for truck drivers
 class AppTheme {
-  static const Color primaryColor = Color(0xFF1E40AF); // Deep blue
-  static const Color secondaryColor = Color(0xFF0EA5E9); // Sky blue
+  static const Color primaryColor = Color(0xFF2563EB); // Vivid Blue
+  static const Color secondaryColor = Color(0xFF0EA5E9); // Sky Blue
   static const Color accentColor = Color(0xFFF59E0B); // Amber
   static const Color successColor = Color(0xFF10B981); // Emerald
   static const Color warningColor = Color(0xFFF97316); // Orange
   static const Color errorColor = Color(0xFFEF4444); // Red
-  static const Color surfaceColor = Color(0xFFF8FAFC); // Light gray
+  static const Color surfaceColor = Color(0xFFF1F5F9); // Slightly cooler gray
   static const Color cardColor = Colors.white;
-  static const Color textPrimary = Color(0xFF1E293B);
-  static const Color textSecondary = Color(0xFF64748B);
-  static const Color textSubtitle = Color(0xFF94A3B8); // For Punjabi subtitles
+  static const Color textPrimary = Color(0xFF0F172A); // Darker blue-gray
+  static const Color textSecondary = Color(0xFF475569);
+  static const Color textSubtitle = Color(0xFF94A3B8);
+
+  // Modern Gradients - "Liquid" feel
+  static const LinearGradient primaryGradient = LinearGradient(
+    colors: [Color(0xFF2563EB), Color(0xFF3B82F6)], // Blue to lighter blue
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient accentGradient = LinearGradient(
+    colors: [Color(0xFFF59E0B), Color(0xFFFBBF24)], // Amber to yellow-amber
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient glassGradient = LinearGradient(
+    colors: [
+      Color(0x99FFFFFF), // White 60%
+      Color(0x4DFFFFFF), // White 30%
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    stops: [0.1, 1.0],
+  );
+
+  static const LinearGradient darkGlassGradient = LinearGradient(
+    colors: [
+      Color(0xCC1E293B), // Dark Blue-Gray 80%
+      Color(0x991E293B), // Dark Blue-Gray 60%
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
 
   static ThemeData get lightTheme {
     return ThemeData(

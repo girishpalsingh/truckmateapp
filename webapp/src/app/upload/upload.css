@@ -1,0 +1,195 @@
+/* Upload Page Styles */
+
+.upload-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.upload-header {
+  height: var(--header-height);
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border-light);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.upload-header-content {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.upload-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.upload-brand-icon {
+  font-size: 1.75rem;
+}
+
+.upload-brand-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: white;
+}
+
+.upload-user-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.upload-user-name {
+  font-weight: 600;
+  color: white;
+}
+
+.upload-org-name {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* Main Content */
+.upload-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+}
+
+.upload-content {
+  width: 100%;
+  max-width: 600px;
+  text-align: center;
+}
+
+.upload-title {
+  font-size: 2rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, #ffffff 0%, #93c5fd 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.upload-subtitle {
+  font-size: 1.25rem;
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+}
+
+/* Dropzone enhancements */
+.upload-content .dropzone {
+  margin-bottom: 1.5rem;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.dropzone.has-file {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.dropzone-file-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dropzone-file-icon {
+  font-size: 3rem;
+}
+
+.dropzone-file-name {
+  font-weight: 600;
+  color: white;
+  word-break: break-all;
+}
+
+.dropzone-file-size {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* Progress */
+.upload-progress {
+  margin-bottom: 1.5rem;
+}
+
+.upload-progress-text {
+  margin-top: 0.75rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* Actions */
+.upload-actions {
+  margin-bottom: 2rem;
+}
+
+.upload-actions .btn {
+  width: 100%;
+  max-width: 300px;
+}
+
+/* Instructions */
+.upload-instructions {
+  text-align: left;
+}
+
+.upload-instructions h3 {
+  font-size: 1.125rem;
+  margin-bottom: 1rem;
+  color: white;
+}
+
+.upload-instructions ol {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--text-secondary);
+}
+
+.upload-instructions li {
+  margin-bottom: 0.5rem;
+}
+
+.upload-instructions li::marker {
+  color: var(--primary-blue);
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .upload-header-content {
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 0;
+    height: auto;
+  }
+  
+  .upload-user-info {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+  
+  .upload-title {
+    font-size: 1.5rem;
+  }
+  
+  .upload-subtitle {
+    font-size: 1rem;
+  }
+}

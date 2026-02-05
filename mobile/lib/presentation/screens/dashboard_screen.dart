@@ -18,6 +18,7 @@ import '../../services/detention_service.dart';
 import '../../data/models/detention_record.dart';
 import '../widgets/journey_timeline.dart';
 import '../../data/models/stop.dart';
+import '../widgets/glass_container.dart'; // Import GlassContainer
 
 /// Main Dashboard Screen - Action-oriented for drivers
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -197,77 +198,97 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadData,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Active Detention Alert
-                    if (_activeDetentions.isNotEmpty) ...[
-                      ..._activeDetentions
-                          .map((d) => _buildActiveDetentionCard(d))
-                          .toList(),
-                      const SizedBox(height: 16),
-                    ],
-
-                    // Latest Load Journey Card
-                    if (_recentLoads.isNotEmpty)
-                      _buildJourneyCard(_recentLoads.first)
-                    else
-                      Card(
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16)),
-                        child: Padding(
-                          padding: const EdgeInsets.all(24.0),
-                          child: Center(
-                            child: Column(
-                              children: [
-                                Icon(Icons.local_shipping_outlined,
-                                    size: 48, color: Colors.grey.shade400),
-                                const SizedBox(height: 16),
-                                Text(
-                                  AppLocalizations.of(context)!.noActiveTrip,
-                                  style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                      fontSize: 16),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-
-                    const SizedBox(height: 24),
-
-                    // Quick Actions
-                    DualLanguageText(
-                      primaryText: AppLocalizations.of(context)!.quickActions,
-                      subtitleText:
-                          AppLocalizations.of(context)!.quickActionsSubtitle,
-                      primaryStyle: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Action Buttons Grid
-                    _buildQuickActionsGrid(),
-
-                    const SizedBox(height: 24),
-
-                    // Voice Command Button
-                    _buildVoiceCommandButton(),
-                  ],
-                ),
+      body: Stack(
+        children: [
+          // Background Gradient Mesh
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFE0E7FF), // Light Indigo
+                  Colors.white,
+                  Color(0xFFE0F2FE), // Light Sky
+                ],
+                stops: [0.0, 0.5, 1.0],
               ),
             ),
+          ),
+          // Content
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _loadData,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Active Detention Alert
+                        if (_activeDetentions.isNotEmpty) ...[
+                          ..._activeDetentions
+                              .map((d) => _buildActiveDetentionCard(d))
+                              .toList(),
+                          const SizedBox(height: 16),
+                        ],
+
+                        // Latest Load Journey Card
+                        if (_recentLoads.isNotEmpty)
+                          _buildJourneyCard(_recentLoads.first)
+                        else
+                          GlassContainer(
+                            color: Colors.white,
+                            padding: const EdgeInsets.all(24.0),
+                            child: Center(
+                              child: Column(
+                                children: [
+                                  Icon(Icons.local_shipping_outlined,
+                                      size: 48, color: Colors.grey.shade400),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    AppLocalizations.of(context)!.noActiveTrip,
+                                    style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 16),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                        const SizedBox(height: 24),
+
+                        // Quick Actions
+                        DualLanguageText(
+                          primaryText:
+                              AppLocalizations.of(context)!.quickActions,
+                          subtitleText: AppLocalizations.of(context)!
+                              .quickActionsSubtitle,
+                          primaryStyle: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Action Buttons Grid
+                        _buildQuickActionsGrid(),
+
+                        const SizedBox(height: 24),
+
+                        // Voice Command Button
+                        _buildVoiceCommandButton(),
+
+                        // Bottom Padding
+                        const SizedBox(height: 40),
+                      ],
+                    ),
+                  ),
+                ),
+        ],
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 0,
         onTap: (index) {
@@ -321,18 +342,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       }
     }
 
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    return GlassContainer(
+      color: Colors.white,
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(16)),
+            decoration: const BoxDecoration(
+              gradient: AppTheme.primaryGradient,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -365,6 +385,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.3)),
                   ),
                   child: Text(
                     load.status.toUpperCase(),
@@ -403,9 +424,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(AppLocalizations.of(context)!.viewTripDetails),
+                    const Text('View Trip Details',
+                        style: TextStyle(
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.bold)),
                     const SizedBox(width: 8),
-                    const Icon(Icons.arrow_forward_ios, size: 14),
+                    const Icon(Icons.arrow_forward_ios,
+                        size: 14, color: AppTheme.primaryColor),
                   ],
                 ),
               ),
@@ -423,32 +448,44 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     required Color color,
     required VoidCallback onTap,
   }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color.withOpacity(0.3)),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, size: 36, color: color),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                style: TextStyle(fontWeight: FontWeight.bold, color: color),
+    return GlassContainer(
+      color: Colors.white.withOpacity(0.7),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white.withOpacity(0.9),
+          Colors.white.withOpacity(0.5),
+        ],
+      ),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
               ),
-              Text(
-                subtitle,
-                style: TextStyle(fontSize: 10, color: color.withOpacity(0.7)),
+              child: Icon(icon, size: 32, color: color),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary,
+                fontSize: 15,
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+            ),
+          ],
         ),
       ),
     );
@@ -518,21 +555,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   Widget _buildActiveDetentionCard(DetentionRecord record) {
-    return Card(
-      color: Colors.red.shade50,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.red.shade200),
-      ),
+    return GlassContainer(
+      color: Colors.red.shade50.withOpacity(0.9),
+      border: Border.all(color: Colors.red.shade200),
       child: ListTile(
-        leading: const Icon(Icons.timer, color: Colors.red, size: 32),
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.red.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.timer, color: Colors.red, size: 24),
+        ),
         title: const Text('DETENTION ACTIVE',
             style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
         subtitle: Text(
             'Started: ${record.startTime.toLocal().toString().split('.')[0]}'),
         trailing: ElevatedButton(
           style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red, foregroundColor: Colors.white),
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          ),
           onPressed: () {
             try {
               final load =

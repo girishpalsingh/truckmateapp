@@ -1,0 +1,126 @@
+/* OTP Login Component Styles */
+
+.otp-login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+.otp-login-card {
+  width: 100%;
+  max-width: 420px;
+  position: relative;
+}
+
+/* Theme toggle positioned in top-right of card */
+.otp-login-theme-toggle {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+}
+
+.otp-login-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.otp-login-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+}
+
+.otp-login-title {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--primary-light) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.otp-login-subtitle {
+  font-size: 1.5rem;
+  color: var(--text-secondary);
+  margin: 0.25rem 0 1rem;
+}
+
+.otp-login-desc {
+  font-size: 1rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.otp-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.otp-login-btn {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.otp-back-btn {
+  width: 100%;
+}
+
+.otp-sent-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 0.75rem;
+  color: var(--primary-light);
+  font-size: 0.9rem;
+}
+
+.otp-sent-icon {
+  font-size: 1.25rem;
+}
+
+.otp-input {
+  font-size: 1.5rem;
+  text-align: center;
+  letter-spacing: 0.5rem;
+  font-weight: 600;
+}
+
+.otp-login-footer {
+  text-align: center;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-light);
+}
+
+.otp-login-footer p {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .otp-login-container {
+    padding: 1rem;
+  }
+  
+  .otp-login-card {
+    padding: 1.5rem;
+  }
+  
+  .otp-login-title {
+    font-size: 2rem;
+  }
+  
+  .otp-login-subtitle {
+    font-size: 1.25rem;
+  }
+}
